@@ -879,7 +879,8 @@ function bindNav(){
 // ---------- grafici ----------
 function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
 function setup(cv){
-  var dpr=window.devicePixelRatio||1,w=cv.clientWidth,h=+cv.getAttribute("height");
+  if(!cv.dataset.h)cv.dataset.h=cv.getAttribute("height");
+  var dpr=window.devicePixelRatio||1,w=cv.clientWidth,h=+cv.dataset.h;
   cv.width=w*dpr;cv.height=h*dpr;cv.style.height=h+"px";var c=cv.getContext("2d");c.setTransform(dpr,0,0,dpr,0,0);return {c:c,w:w,h:h};
 }
 function drawDensity(r){
@@ -902,7 +903,7 @@ function drawIE(){
   ieGeom={X:X,L:L,R:R,W:W};
   c.font="11px "+css("--sans");c.lineWidth=1;
   [0,5,10,15,20,25].forEach(function(v){c.strokeStyle=css("--line");c.beginPath();c.moveTo(L,Y(v));c.lineTo(W-R,Y(v));c.stroke();c.fillStyle=css("--faint");c.textAlign="right";c.fillText(v,L-6,Y(v)+4);});
-  [1,20,40,60,80,103].forEach(function(z){c.textAlign="center";c.fillText("Z "+z,X(z),H-6);});
+  [1,20,40,60,80,103].forEach(function(z){c.textAlign=z===1?"left":z===103?"right":"center";c.fillText("Z "+z,z===1?X(z)-4:X(z),H-6);});
   c.save();c.textAlign="left";c.fillText("eV",L+4,T+10);c.restore();
   if(selected){c.strokeStyle=css("--muted");c.setLineDash([3,3]);c.beginPath();c.moveTo(X(selected),T);c.lineTo(X(selected),H-B);c.stroke();c.setLineDash([]);}
   function series(get,color,w,dots){
