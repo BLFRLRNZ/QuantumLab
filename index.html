@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Laboratorio vergine</title>
+<meta name="theme-color" content="#1d2337">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Lab vergine">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Newsreader:opsz,wght@6..72,500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#1d2337; --panel:#252c44; --panel2:#2c3450; --line:#3b4566; --text:#e9ecf5; --muted:#a6aec7; --faint:#6f789a;
+  --na:#f2c14e; --na-soft:rgba(242,193,78,.16); --cu:#4cc4b6; --cu-soft:rgba(76,196,182,.16); --li:#e8607a; --li-soft:rgba(232,96,122,.16);
+  --serif:"Newsreader",Georgia,serif; --sans:"Atkinson Hyperlegible",system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box}
+html{background:var(--bg);-webkit-text-size-adjust:100%}
+body{margin:0;color:var(--text);font-family:var(--sans);font-size:16px;line-height:1.5;
+  padding:calc(env(safe-area-inset-top) + 12px) calc(env(safe-area-inset-right) + 16px) calc(env(safe-area-inset-bottom) + 28px) calc(env(safe-area-inset-left) + 16px)}
+main{max-width:760px;margin:0 auto}
+h1{font-family:var(--serif);font-weight:500;font-size:2.3rem;line-height:1.05;margin:.4rem 0 .35rem;letter-spacing:-.01em}
+h2{font-family:var(--serif);font-weight:500;font-size:1.45rem;line-height:1.2;margin:0 0 .5rem}
+h3{font-size:1rem;margin:0 0 .4rem;font-weight:700}
+p{margin:.35rem 0}
+.lede{color:var(--muted);max-width:36em;margin-bottom:1.2rem}
+.muted{color:var(--muted)} .small{font-size:.86rem}
+section{margin:1.6rem 0}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,.cell:focus-visible,summary:focus-visible{outline:2px solid var(--na);outline-offset:2px}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:.6rem 1rem;font-weight:700}
+.btn.primary{background:var(--na);border-color:var(--na);color:#2a2006}
+.btn.ghost{background:transparent}
+.btn[disabled]{opacity:.45;cursor:default}
+
+/* tavola periodica */
+.table-wrap{overflow-x:auto;margin:0 -16px;padding:4px 16px 10px;-webkit-overflow-scrolling:touch;scrollbar-width:thin}
+.ptable{display:grid;grid-template-columns:repeat(18,34px);grid-auto-rows:40px;gap:3px;width:max-content}
+.cell{position:relative;border:1px solid var(--line);border-radius:6px;background:transparent;padding:0;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;color:var(--muted)}
+.cell .z{font-size:9px;color:var(--faint);margin-bottom:3px}
+.cell .s{font-size:13px;font-weight:700}
+.cell.done{background:var(--na-soft);border-color:rgba(242,193,78,.45);color:var(--na)}
+.cell.run{border-color:var(--na);color:var(--text);animation:pulse 1.1s ease-in-out infinite}
+.cell.sel{box-shadow:0 0 0 2px var(--text)}
+.cell.off{opacity:.3;cursor:default}
+.cell.match::after,.cell.miss::after{content:"";position:absolute;left:5px;right:5px;bottom:3px;height:3px;border-radius:2px}
+.cell.match::after{background:var(--cu)} .cell.miss::after{background:var(--li)}
+.gap-label{grid-column:3;font-size:9px;color:var(--faint);display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.1}
+@keyframes pulse{50%{background:var(--na-soft)}}
+@media (prefers-reduced-motion:reduce){.cell.run{animation:none;background:var(--na-soft)}}
+
+.scroll-hint{margin:.1rem 0 .6rem}
+@media (min-width:700px){.scroll-hint{display:none}}
+.runbar{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin-top:.4rem}
+.status{font-size:.92rem;color:var(--muted);flex:1 1 220px}
+.progress{height:4px;background:var(--panel2);border-radius:3px;overflow:hidden;margin-top:.7rem}
+.progress>i{display:block;height:100%;width:0;background:var(--na);transition:width .3s}
+
+/* scheda elemento */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:1rem}
+.el-head{display:flex;align-items:flex-end;gap:.9rem;margin-bottom:.6rem}
+.el-sym{font-family:var(--serif);font-size:4.2rem;line-height:.85;color:var(--na)}
+.el-name{font-size:1.15rem;font-weight:700}
+.el-nav{margin-left:auto;display:flex;gap:.4rem}
+.el-nav button{width:40px;height:40px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);font-size:1.1rem}
+.config{font-family:var(--serif);font-size:1.5rem;line-height:1.3;margin:.1rem 0 .2rem;word-break:break-word}
+.config.full{font-size:1.05rem}
+.linkish{background:none;border:0;padding:0;color:var(--muted);text-decoration:underline;text-underline-offset:3px;font-size:.88rem}
+.facts{display:grid;grid-template-columns:1fr 1fr;gap:.7rem 1rem;margin:1rem 0 .4rem}
+.fact b{display:block;font-size:1.35rem;font-variant-numeric:tabular-nums}
+.fact span{font-size:.84rem;color:var(--muted)}
+canvas{display:block;width:100%}
+.levels{width:100%;border-collapse:collapse;font-size:.92rem;margin-top:.3rem}
+.levels td{padding:.32rem 0;border-top:1px solid var(--line);vertical-align:middle}
+.levels td:first-child{font-weight:700;width:3.2rem}
+.levels td.arrows{letter-spacing:.06em;color:var(--na)}
+.levels td.arrows .dn{color:#f7dc9c}
+.levels td:last-child{text-align:right;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.sub{margin-top:1.2rem}
+.compare{margin-top:1rem;border-radius:10px;padding:.8rem .9rem;background:var(--cu-soft);border:1px solid rgba(76,196,182,.45)}
+.compare.bad{background:var(--li-soft);border-color:rgba(232,96,122,.5)}
+.verdict{font-weight:700}
+.compare .verdict{color:var(--cu)} .compare.bad .verdict{color:var(--li)}
+.empty{color:var(--muted)}
+
+/* busta */
+.seal{border:1.5px dashed var(--line);border-radius:14px;padding:1rem;background:repeating-linear-gradient(135deg,transparent 0 14px,rgba(255,255,255,.018) 14px 28px)}
+.seal-head{display:flex;gap:.8rem;align-items:center;margin-bottom:.4rem}
+.wax{flex:0 0 42px;height:42px;border-radius:50%;background:var(--li);display:grid;place-items:center;color:#3a0d17;font-family:var(--serif);font-size:1.3rem}
+.confirm{margin-top:.8rem;padding:.8rem;border-radius:10px;background:var(--panel2)}
+.confirm .row{display:flex;gap:.5rem;margin-top:.6rem}
+.score{display:grid;grid-template-columns:1fr 1fr;gap:.7rem 1rem;margin:.6rem 0 1rem}
+.periods{width:100%;border-collapse:collapse;font-size:.9rem;margin:.4rem 0 1rem}
+.periods th,.periods td{text-align:left;padding:.35rem .3rem;border-top:1px solid var(--line);font-variant-numeric:tabular-nums}
+.periods th{font-weight:400;color:var(--muted)}
+.legend{display:flex;gap:1rem;flex-wrap:wrap;font-size:.84rem;color:var(--muted);margin:.3rem 0 .2rem}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:.35rem}
+details{border-top:1px solid var(--line);padding-top:.8rem}
+summary{cursor:pointer;font-family:var(--serif);font-size:1.3rem;list-style:none}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"+";display:inline-block;width:1.1em;color:var(--na)}
+details[open] summary::before{content:"–"}
+.laws{padding-left:1.1rem;margin:.5rem 0}
+.laws li{margin:.35rem 0}
+footer{margin-top:2rem;color:var(--faint);font-size:.82rem;display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;align-items:center}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>Laboratorio vergine</h1>
+  <p class="lede">Livello 0, l'atomo. Il motore conosce solo il numero di protoni: come si dispongono gli elettroni e quanta energia serve per strapparne uno lo scopre da solo, con le leggi della fisica. I risultati restano su questo telefono.</p>
+</header>
+
+<section aria-label="Tavola periodica">
+  <div class="table-wrap"><div class="ptable" id="ptable"></div></div>
+  <p class="muted small scroll-hint">Scorri la tavola di lato per vedere tutti gli elementi.</p>
+  <div class="runbar">
+    <button class="btn primary" id="runAll">Calcola tutta la tavola</button>
+    <div class="status" id="status" aria-live="polite"></div>
+  </div>
+  <div class="progress" aria-hidden="true"><i id="bar"></i></div>
+</section>
+
+<section id="detail" class="card" aria-live="polite"></section>
+
+<section id="discovery">
+  <h2>Cosa ha scoperto</h2>
+  <p class="muted small" id="discText">Energia necessaria per strappare un elettrone, elemento per elemento. Tocca il grafico per scegliere un elemento.</p>
+  <div class="legend" id="legend"><span><i style="background:var(--na)"></i>calcolata dal motore</span></div>
+  <canvas id="ieChart" height="220" aria-label="Grafico dell'energia di ionizzazione in funzione del numero atomico"></canvas>
+</section>
+
+<section id="busta"></section>
+
+<section>
+<details>
+  <summary>Cosa sa il motore</summary>
+  <ul class="laws">
+    <li><b>Dato in ingresso:</b> il numero di protoni Z, nient'altro. Nome e simbolo dell'elemento sono solo etichette per te.</li>
+    <li><b>Leggi impostate:</b> equazione di Schrödinger per gli elettroni (nella forma di Kohn-Sham), attrazione di Coulomb tra nucleo ed elettroni, repulsione tra elettroni, principio di Pauli (al massimo 2l+1 elettroni per sottolivello e per spin).</li>
+    <li><b>Scambio e correlazione:</b> approssimazione LSDA. I parametri vengono da simulazioni quantistiche del gas di elettroni, non da misure su atomi.</li>
+    <li><b>Come cerca:</b> lascia che gli elettroni occupino i livelli più bassi, poi prova a spostarne uno alla volta e tiene la disposizione con l'energia più bassa. L'energia di ionizzazione è la differenza di energia tra lo ione e l'atomo neutro.</li>
+    <li><b>Cosa non sa:</b> nessuna tabella di configurazioni, nessuna regola di riempimento, nessun valore misurato. Non conosce ancora la relatività.</li>
+  </ul>
+</details>
+</section>
+
+<footer>
+  <span>Motore 0.1: non relativistico, LSDA (PW92), griglia logaritmica.</span>
+  <button class="linkish" id="reset">Azzera i calcoli</button>
+</footer>
+<div id="resetConfirm" class="confirm" hidden>
+  <p>Cancello tutti i risultati salvati su questo telefono. La busta torna sigillata.</p>
+  <div class="row"><button class="btn" id="resetYes">Cancella i risultati</button><button class="btn ghost" id="resetNo">Annulla</button></div>
+</div>
+</main>
+
+<script id="engine">
+// MOTORE — Livello 0. Unico dato in ingresso: Z (numero di protoni).
+// Leggi impostate: equazione di Schrodinger per gli elettroni (Kohn-Sham, unita atomiche),
+// attrazione di Coulomb del nucleo, repulsione di Coulomb tra elettroni (Hartree),
+// principio di Pauli (max 2l+1 elettroni per sottolivello e spin),
+// scambio e correlazione LSDA: scambio esatto del gas di elettroni + correlazione PW92
+// (formula adattata a simulazioni Monte Carlo quantistiche del gas di elettroni, non a esperimenti).
+// Non contiene: tabelle di configurazioni, regola di Madelung, valori misurati, relativita.
+
+var HA2EV = 27.211386245988;
+var LETTERS = ['s', 'p', 'd', 'f'];
+
+function makeGrid(Z, dx, rmax) {
+  dx = dx || 0.005; rmax = rmax || 60;
+  var xmin = -8.0, xmax = Math.log(Z * rmax);
+  var mesh = Math.ceil((xmax - xmin) / dx);
+  var r = new Float64Array(mesh + 1), r2 = new Float64Array(mesh + 1), sqr = new Float64Array(mesh + 1), w = new Float64Array(mesh + 1);
+  for (var i = 0; i <= mesh; i++) {
+    r[i] = Math.exp(xmin + i * dx) / Z; r2[i] = r[i] * r[i]; sqr[i] = Math.sqrt(r[i]);
+    w[i] = 4 * Math.PI * r[i] * r2[i] * dx; // elemento di volume 4 pi r^2 dr con dr = r dx
+  }
+  w[0] *= 0.5; w[mesh] *= 0.5;
+  return { Z: Z, dx: dx, mesh: mesh, r: r, r2: r2, sqr: sqr, w: w };
+}
+
+// Equazione radiale di Schrodinger (Numerov su griglia logaritmica, metodo shooting con correzione perturbativa).
+function solveRadial(g, n, l, V, eGuess, Zn, noRetry) {
+  var sol = solveRadial1(g, n, l, V, eGuess, Zn);
+  if (sol || noRetry) return sol;
+  // ripartenze da energie diverse (utile per gli orbitali f, che vivono in una doppia buca di potenziale)
+  var tries = [-0.02, -0.08, -0.2, -0.5, -1, -2, -4, -8];
+  for (var t = 0; t < tries.length; t++) {
+    if (eGuess !== undefined && Math.abs(tries[t] - eGuess) < 1e-3) continue;
+    sol = solveRadial1(g, n, l, V, tries[t], Zn);
+    if (sol) return sol;
+  }
+  return null;
+}
+function solveRadial1(g, n, l, V, eGuess, Zn) {
+  var mesh = g.mesh, r = g.r, r2 = g.r2, sqr = g.sqr, dx = g.dx;
+  var ddx12 = dx * dx / 12, sqlhf = (l + 0.5) * (l + 0.5), x2l2 = 2 * l + 2;
+  var nodes = n - l - 1;
+  var eup = V[mesh], elw = 1e30;
+  for (var i = 0; i <= mesh; i++) { var t = V[i] + sqlhf / (2 * r2[i]); if (t < elw) elw = t; }
+  if (eup - elw < 1e-12) return null;
+  var e = (eGuess !== undefined && eGuess > elw && eGuess < eup) ? eGuess : 0.5 * (elw + eup);
+  var f = new Float64Array(mesh + 1), y = new Float64Array(mesh + 1);
+  for (var iter = 0; iter < 300; iter++) {
+    var icl = -1;
+    f[0] = ddx12 * (sqlhf + 2 * r2[0] * (V[0] - e));
+    for (i = 1; i <= mesh; i++) {
+      f[i] = ddx12 * (sqlhf + 2 * r2[i] * (V[i] - e));
+      if (f[i] === 0) f[i] = 1e-20;
+      if ((f[i] > 0) !== (f[i - 1] > 0)) icl = i;
+    }
+    if (icl < 0 || icl >= mesh - 2) { eup = e; e = 0.5 * (eup + elw); if (eup - elw < 1e-12) return null; continue; }
+    // punto di partenza dell'integrazione verso l'interno: dove la funzione e' ormai trascurabile
+    var acc = 0, istart = mesh - 1;
+    for (i = icl; i < mesh - 1; i++) { var gg = f[i] / ddx12; if (gg > 0) acc += Math.sqrt(gg) * dx; if (acc > 45 && i > icl + 2) { istart = i; break; } }
+    for (i = 0; i <= mesh; i++) f[i] = 1 - f[i];
+    for (i = 0; i <= mesh; i++) y[i] = 0;
+    y[0] = Math.pow(r[0], l + 1) * (1 - 2 * Zn * r[0] / x2l2) / sqr[0];
+    y[1] = Math.pow(r[1], l + 1) * (1 - 2 * Zn * r[1] / x2l2) / sqr[1];
+    var ncross = 0;
+    for (i = 1; i <= icl - 1; i++) {
+      y[i + 1] = ((12 - 10 * f[i]) * y[i] - f[i - 1] * y[i - 1]) / f[i + 1];
+      if ((y[i] > 0) !== (y[i + 1] > 0) && y[i] !== 0) ncross++;
+    }
+    var fac = y[icl];
+    if (ncross !== nodes) {
+      if (ncross > nodes) eup = e; else elw = e;
+      e = 0.5 * (eup + elw);
+      if (eup - elw < 1e-12) return null;
+      continue;
+    }
+    y[istart + 1] = 0; y[istart] = dx;
+    y[istart - 1] = (12 - 10 * f[istart]) * y[istart] / f[istart - 1];
+    for (i = istart - 1; i >= icl + 1; i--) {
+      y[i - 1] = ((12 - 10 * f[i]) * y[i] - f[i + 1] * y[i + 1]) / f[i - 1];
+      if (Math.abs(y[i - 1]) > 1e100) { for (var k = i - 1; k <= istart; k++) y[k] *= 1e-100; }
+    }
+    fac = fac / y[icl];
+    for (i = icl; i <= istart; i++) y[i] *= fac;
+    var norm = 0;
+    for (i = 0; i <= mesh; i++) norm += y[i] * y[i] * r2[i] * dx;
+    norm = Math.sqrt(norm);
+    for (i = 0; i <= mesh; i++) y[i] /= norm;
+    i = icl;
+    var ycusp = (y[i - 1] * f[i - 1] + f[i + 1] * y[i + 1] + 10 * f[i] * y[i]) / 12;
+    var dfcusp = f[i] * (y[i] / ycusp - 1);
+    var de = 0.5 * dfcusp / ddx12 * ycusp * ycusp * dx;
+    if (de > 0) elw = e;
+    if (de < 0) eup = e;
+    var tol = 1e-10 * Math.max(1, Math.abs(e));
+    if (Math.abs(de) < tol || eup - elw < tol) {
+      // accettato solo se e' davvero uno stato legato e la derivata si raccorda
+      if (Math.abs(dfcusp) > 1e-6 || e > V[mesh] - 1e-5) return null;
+      return { e: e, y: y };
+    }
+    e = Math.max(Math.min(e + de, eup), elw);
+  }
+  return null;
+}
+
+// Scambio-correlazione LSDA (per unita di volume) e potenziali per spin.
+var CX = Math.pow(6 / Math.PI, 1 / 3), FPP0 = 1.709921, D43 = Math.pow(2, 4 / 3) - 2;
+function Gpw(rs, A, a1, b1, b2, b3, b4) {
+  var srs = Math.sqrt(rs);
+  var q0 = -2 * A * (1 + a1 * rs);
+  var q1 = 2 * A * (b1 * srs + b2 * rs + b3 * rs * srs + b4 * rs * rs);
+  var q1p = A * (b1 / srs + 2 * b2 + 3 * b3 * srs + 4 * b4 * rs);
+  var lg = Math.log(1 + 1 / q1);
+  return [q0 * lg, -2 * A * a1 * lg - q0 * q1p / (q1 * q1 + q1)];
+}
+function xc(nu, nd, out) {
+  var n = nu + nd;
+  if (n < 1e-30) { out[0] = 0; out[1] = 0; out[2] = 0; return; }
+  if (nu < 0) nu = 0; if (nd < 0) nd = 0;
+  var cu = Math.cbrt(nu), cd = Math.cbrt(nd);
+  var ex = -0.75 * CX * (nu * cu + nd * cd);
+  var vxu = -CX * cu, vxd = -CX * cd;
+  var rs = Math.cbrt(3 / (4 * Math.PI * n));
+  var z = (nu - nd) / n; if (z > 1) z = 1; if (z < -1) z = -1;
+  var c0 = Gpw(rs, 0.031091, 0.21370, 7.5957, 3.5876, 1.6382, 0.49294);
+  var c1 = Gpw(rs, 0.015545, 0.20548, 14.1189, 6.1977, 3.3662, 0.62517);
+  var ca = Gpw(rs, 0.016887, 0.11125, 10.357, 3.6231, 0.88026, 0.49671);
+  var ac = -ca[0], dac = -ca[1];
+  var p1 = Math.cbrt(1 + z), m1 = Math.cbrt(1 - z);
+  var fz = ((1 + z) * p1 + (1 - z) * m1 - 2) / D43;
+  var dfz = (4 / 3) * (p1 - m1) / D43;
+  var z3 = z * z * z, z4 = z3 * z;
+  var ec = c0[0] + ac * fz / FPP0 * (1 - z4) + (c1[0] - c0[0]) * fz * z4;
+  var decr = c0[1] * (1 - fz * z4) + c1[1] * fz * z4 + dac * fz / FPP0 * (1 - z4);
+  var decz = 4 * z3 * fz * (c1[0] - c0[0] - ac / FPP0) + dfz * (z4 * (c1[0] - c0[0]) + (1 - z4) * ac / FPP0);
+  var base = ec - rs / 3 * decr;
+  out[0] = ex + n * ec;
+  out[1] = vxu + base - (z - 1) * decz;
+  out[2] = vxd + base - (z + 1) * decz;
+}
+
+// Potenziale di partenza: schermo statistico di Thomas-Fermi (approssimazione di Tietz) per Z-1 elettroni,
+// piu' la carica netta +1 vista da lontano (legge di Gauss). Solo da Z.
+function startPotential(g) {
+  var Z = g.Z, b = 0.8853 * Math.pow(Z, -1 / 3), V = new Float64Array(g.mesh + 1);
+  for (var i = 0; i <= g.mesh; i++) { var x = g.r[i] / b, phi = 1 / Math.pow(1 + 0.53625 * x, 2); V[i] = -(1 + (Z - 1) * phi) / g.r[i]; }
+  return V;
+}
+
+function orbKey(o) { return o.n + ',' + o.l + ',' + o.s; }
+function energiesOf(res) { var m = {}; (res.orbs || []).forEach(function (o) { m[orbKey(o)] = o.e; }); return m; }
+
+// Calcolo autoconsistente per una configurazione fissata (occupazioni intere per (n,l,spin)).
+function scf(g, occs, Vstart, opts) {
+  opts = opts || {};
+  var mesh = g.mesh, Z = g.Z, r = g.r, w = g.w;
+  var N = 0; for (var k = 0; k < occs.length; k++) N += occs[k].occ;
+  if (N === 0) return { E: 0, V: [Vstart[0].slice(), Vstart[1].slice()], orbs: [], it: 0, ok: true };
+  var Vin = [Float64Array.from(Vstart[0]), Float64Array.from(Vstart[1])];
+  var nu = new Float64Array(mesh + 1), nd = new Float64Array(mesh + 1);
+  var eprev = Object.assign({}, opts.eg || {}), Eold = 0, out = [0, 0, 0];
+  var VH = new Float64Array(mesh + 1), Vout = [new Float64Array(mesh + 1), new Float64Array(mesh + 1)];
+  var ex = new Float64Array(mesh + 1);
+  var alpha = opts.alpha || 0.35, maxit = opts.maxit || 200;
+  var Fold = null, Vold = null, good = null, backs = 0;
+  for (var it = 1; it <= maxit; it++) {
+    nu.fill(0); nd.fill(0);
+    var sumeps = 0, orbs = [], failed = false;
+    for (k = 0; k < occs.length; k++) {
+      var o = occs[k]; if (o.occ <= 0) continue;
+      var key = orbKey(o);
+      var sol = solveRadial(g, o.n, o.l, Vin[o.s], eprev[key], Z);
+      if (!sol) { failed = true; break; }
+      eprev[key] = sol.e;
+      sumeps += o.occ * sol.e;
+      var dens = o.s === 0 ? nu : nd, y = sol.y;
+      for (var i = 0; i <= mesh; i++) dens[i] += o.occ * y[i] * y[i] / (4 * Math.PI * r[i]);
+      orbs.push({ n: o.n, l: o.l, s: o.s, occ: o.occ, e: sol.e, y: sol.y });
+    }
+    if (failed) {
+      // un orbitale occupato non e' legato in questo passo intermedio: si torna indietro e si procede piu' piano
+      if (!good || backs > 8) return { ok: false };
+      backs++;
+      for (var s0 = 0; s0 < 2; s0++) for (i = 0; i <= mesh; i++) Vin[s0][i] = good[s0][i] + 0.25 * (Vin[s0][i] - good[s0][i]);
+      alpha *= 0.6; Fold = null; Vold = null;
+      continue;
+    }
+    good = [Float64Array.from(Vin[0]), Float64Array.from(Vin[1])];
+    // Hartree: V_H(r) = Q(r)/r + integrale esterno
+    var q = 0, qin = new Float64Array(mesh + 1);
+    var prev = 0;
+    for (i = 0; i <= mesh; i++) {
+      var cur = 4 * Math.PI * (nu[i] + nd[i]) * r[i] * r[i] * r[i];
+      if (i === 0) q = cur / 3; else q += 0.5 * (cur + prev) * g.dx;
+      qin[i] = q; prev = cur;
+    }
+    var o2 = 0; prev = 0;
+    for (i = mesh; i >= 0; i--) {
+      var cur2 = 4 * Math.PI * (nu[i] + nd[i]) * r[i] * r[i];
+      if (i < mesh) o2 += 0.5 * (cur2 + prev) * g.dx;
+      prev = cur2;
+      VH[i] = qin[i] / r[i] + o2;
+    }
+    var Exc = 0, EH = 0, Eext = 0, vinn = 0;
+    for (i = 0; i <= mesh; i++) {
+      xc(nu[i], nd[i], out);
+      var ntot = nu[i] + nd[i];
+      Exc += out[0] * w[i];
+      EH += 0.5 * VH[i] * ntot * w[i];
+      Eext += (-Z / r[i]) * ntot * w[i];
+      vinn += (Vin[0][i] * nu[i] + Vin[1][i] * nd[i]) * w[i];
+      Vout[0][i] = -Z / r[i] + VH[i] + out[1];
+      Vout[1][i] = -Z / r[i] + VH[i] + out[2];
+    }
+    var Ts = sumeps - vinn;
+    var E = Ts + Eext + EH + Exc;
+    // residuo
+    var res = 0;
+    for (var s = 0; s < 2; s++) for (i = 0; i <= mesh; i++) { var d = Vout[s][i] - Vin[s][i]; res += d * d * (nu[i] + nd[i] + 1e-12) * w[i]; }
+    res = Math.sqrt(res);
+    if (it > 1 && Math.abs(E - Eold) < 1e-9 && res < 1e-6) {
+      return { ok: true, E: E, V: Vin, orbs: orbs, it: it, nu: nu, nd: nd, Ts: Ts, Eext: Eext, EH: EH, Exc: Exc };
+    }
+    Eold = E;
+    // miscelazione di Anderson (memoria 1)
+    var F = [new Float64Array(mesh + 1), new Float64Array(mesh + 1)];
+    for (s = 0; s < 2; s++) for (i = 0; i <= mesh; i++) F[s][i] = Vout[s][i] - Vin[s][i];
+    var beta = 0;
+    if (Fold) {
+      var num = 0, den = 0;
+      for (s = 0; s < 2; s++) for (i = 0; i <= mesh; i++) {
+        var wt = (nu[i] + nd[i] + 1e-12) * w[i];
+        var dF = F[s][i] - Fold[s][i];
+        num += F[s][i] * dF * wt; den += dF * dF * wt;
+      }
+      if (den > 0) beta = num / den;
+      if (beta > 0.9) beta = 0.9; if (beta < -0.9) beta = -0.9;
+    }
+    var Vnew = [new Float64Array(mesh + 1), new Float64Array(mesh + 1)];
+    for (s = 0; s < 2; s++) for (i = 0; i <= mesh; i++) {
+      var vb = Vin[s][i], fb = F[s][i];
+      if (Fold) { vb = (1 - beta) * Vin[s][i] + beta * Vold[s][i]; fb = (1 - beta) * F[s][i] + beta * Fold[s][i]; }
+      Vnew[s][i] = vb + alpha * fb;
+    }
+    Fold = F; Vold = Vin; Vin = Vnew;
+  }
+  return { ok: false };
+}
+
+// Elenco dei possibili sottolivelli (n,l): solo combinatoria, nessun ordine imposto.
+function shells(maxn) {
+  var list = [];
+  for (var n = 1; n <= maxn; n++) for (var l = 0; l < Math.min(n, 4); l++) list.push([n, l]);
+  return list;
+}
+
+function occsFromMap(map) {
+  var occs = [];
+  for (var key in map) { if (map[key] > 0) { var p = key.split(','); occs.push({ n: +p[0], l: +p[1], s: +p[2], occ: map[key] }); } }
+  occs.sort(function (a, b) { return a.n - b.n || a.l - b.l || a.s - b.s; });
+  return occs;
+}
+
+// Livelli di energia dei sottolivelli vuoti, nel potenziale attuale
+function levels(g, V, maxn) {
+  var lv = [];
+  var sh = shells(maxn);
+  for (var k = 0; k < sh.length; k++) for (var s = 0; s < 2; s++) {
+    var sol = solveRadial(g, sh[k][0], sh[k][1], V[s], undefined, g.Z, true);
+    if (sol && sol.e < 0) lv.push({ n: sh[k][0], l: sh[k][1], s: s, e: sol.e });
+  }
+  return lv;
+}
+
+// Riempimento iniziale: N elettroni nei livelli piu' bassi del potenziale di partenza (Pauli: 2l+1 per spin).
+function initialFill(g, V, N, maxn) {
+  var lv = levels(g, [V, V], maxn);
+  lv.sort(function (a, b) { return a.e - b.e || a.s - b.s; });
+  var map = {}, left = N;
+  for (var k = 0; k < lv.length && left > 0; k++) {
+    var cap = 2 * lv[k].l + 1, put = Math.min(cap, left);
+    map[lv[k].n + ',' + lv[k].l + ',' + lv[k].s] = put; left -= put;
+  }
+  return map;
+}
+
+// Riempimento autoconsistente ("aufbau dinamico"): a ogni passo gli N elettroni occupano i livelli
+// piu' bassi del potenziale attuale (Pauli: 2l+1 per spin), con occupazioni smorzate. Nessuna tabella.
+function aufbauSCF(g, N, maxn) {
+  var mesh = g.mesh, r = g.r, w = g.w, Z = g.Z;
+  var V0 = startPotential(g);
+  var Vin = [Float64Array.from(V0), Float64Array.from(V0)];
+  var sh = shells(maxn), occ = {}, out = [0, 0, 0];
+  var nu = new Float64Array(mesh + 1), nd = new Float64Array(mesh + 1), VH = new Float64Array(mesh + 1);
+  var lastLv = null, good = null;
+  for (var it = 0; it < 70; it++) {
+    var lv = [], ys = {};
+    for (var k = 0; k < sh.length; k++) for (var s = 0; s < 2; s++) {
+      var key = sh[k][0] + ',' + sh[k][1] + ',' + s;
+      var sol = solveRadial(g, sh[k][0], sh[k][1], Vin[s], undefined, Z, true);
+      if (sol && sol.e < 0) { lv.push({ key: key, l: sh[k][1], s: s, e: sol.e }); ys[key] = sol.y; }
+    }
+    lv.sort(function (a, b) { return a.e - b.e || a.s - b.s; });
+    var target = {}, left = N;
+    for (k = 0; k < lv.length && left > 0; k++) { var put = Math.min(2 * lv[k].l + 1, left); target[lv[k].key] = put; left -= put; }
+    if (left > 0) { if (!good) return null; for (s = 0; s < 2; s++) Vin[s] = Float64Array.from(good[s]); continue; }
+    good = [Float64Array.from(Vin[0]), Float64Array.from(Vin[1])];
+    var keys = {}; for (var a in occ) keys[a] = 1; for (a in target) keys[a] = 1;
+    var beta = it === 0 ? 1 : 0.35;
+    for (a in keys) { var v = (1 - beta) * (occ[a] || 0) + beta * (target[a] || 0); if (!ys[a]) v = 0; occ[a] = v; }
+    // rinormalizza a N elettroni
+    var tot = 0; for (a in occ) tot += occ[a];
+    for (a in occ) occ[a] *= N / tot;
+    nu.fill(0); nd.fill(0);
+    for (a in occ) { if (occ[a] <= 0) continue; var y = ys[a], dens = a.slice(-1) === '0' ? nu : nd;
+      for (var i = 0; i <= mesh; i++) dens[i] += occ[a] * y[i] * y[i] / (4 * Math.PI * r[i]); }
+    var q = 0, prev = 0, qin = new Float64Array(mesh + 1);
+    for (i = 0; i <= mesh; i++) { var cur = 4 * Math.PI * (nu[i] + nd[i]) * r[i] * r[i] * r[i]; if (i === 0) q = cur / 3; else q += 0.5 * (cur + prev) * g.dx; qin[i] = q; prev = cur; }
+    var o2 = 0; prev = 0;
+    for (i = mesh; i >= 0; i--) { var c2 = 4 * Math.PI * (nu[i] + nd[i]) * r[i] * r[i]; if (i < mesh) o2 += 0.5 * (c2 + prev) * g.dx; prev = c2; VH[i] = qin[i] / r[i] + o2; }
+    for (i = 0; i <= mesh; i++) {
+      xc(nu[i], nd[i], out);
+      Vin[0][i] += 0.3 * ((-Z / r[i] + VH[i] + out[1]) - Vin[0][i]);
+      Vin[1][i] += 0.3 * ((-Z / r[i] + VH[i] + out[2]) - Vin[1][i]);
+    }
+    lastLv = lv;
+    var dmax = 0; for (a in keys) dmax = Math.max(dmax, Math.abs((target[a] || 0) - occ[a]));
+    if (it > 12 && dmax < 0.02) break;
+  }
+  // configurazione intera: riempimento dei livelli finali
+  var map = {}, left2 = N;
+  for (k = 0; k < lastLv.length && left2 > 0; k++) { var p2 = Math.min(2 * lastLv[k].l + 1, left2); map[lastLv[k].key] = p2; left2 -= p2; }
+  return { map: map, V: good, levels: lastLv, occ: occ };
+}
+
+// Partenze intere vicine al riempimento frazionario: arrotondamento e spostamenti di 1-3 elettroni
+// dai livelli occupati piu' alti a quelli liberi piu' bassi.
+function candidateStarts(au, N) {
+  var lv = au.levels, cap = {}, e = {};
+  lv.forEach(function (x) { cap[x.key] = 2 * x.l + 1; e[x.key] = x.e; });
+  var seen = {}, out = [];
+  function add(m) { var k = JSON.stringify(Object.keys(m).filter(function (q) { return m[q] > 0; }).sort().map(function (q) { return q + ':' + m[q]; })); if (!seen[k]) { seen[k] = 1; out.push(m); } }
+  // arrotondamento delle occupazioni frazionarie (resti piu' grandi)
+  var fl = {}, tot = 0, rem = [];
+  for (var k in au.occ) { var f = Math.floor(au.occ[k] + 1e-9); fl[k] = f; tot += f; rem.push([k, au.occ[k] - f]); }
+  rem.sort(function (a, b) { return b[1] - a[1]; });
+  for (var i = 0; tot < N && i < rem.length; i++) { if (fl[rem[i][0]] < cap[rem[i][0]]) { fl[rem[i][0]]++; tot++; } }
+  if (tot === N) add(fl);
+  [au.map, fl].forEach(function (base) {
+    for (var m = 1; m <= 3; m++) {
+      var mm = Object.assign({}, base);
+      var occd = Object.keys(mm).filter(function (q) { return mm[q] > 0 && e[q] !== undefined; }).sort(function (a, b) { return e[b] - e[a]; });
+      var free = lv.filter(function (x) { return (mm[x.key] || 0) < cap[x.key]; }).map(function (x) { return x.key; });
+      var moved = 0, oi = 0;
+      while (moved < m && oi < occd.length) {
+        var src = occd[oi]; if (mm[src] <= 0) { oi++; continue; }
+        var dst = null; for (var j = 0; j < free.length; j++) { var fk = free[j]; if (fk !== src && (mm[fk] || 0) < cap[fk] && e[fk] > e[src] - 1e-9) { dst = fk; break; } }
+        if (!dst) break;
+        mm[src]--; mm[dst] = (mm[dst] || 0) + 1; moved++;
+      }
+      if (moved === m) add(mm);
+    }
+  });
+  add(au.map);
+  return out;
+}
+
+// Ricerca della configurazione di minima energia: spostamenti di un elettrone alla volta.
+function searchConfig(g, startMap, Vstart, maxn, log, pre) {
+  var best = pre || scf(g, occsFromMap(startMap), Vstart);
+  var tries = 1;
+  if (!best.ok) return { ok: false, tries: tries };
+  best.map = startMap;
+  for (var round = 0; round < 12; round++) {
+    var occ = best.orbs;
+    var homo = -1e9; for (var k = 0; k < occ.length; k++) if (occ[k].e > homo) homo = occ[k].e;
+    var lv = levels(g, best.V, maxn);
+    var eps = {}; for (k = 0; k < lv.length; k++) eps[lv[k].n + ',' + lv[k].l + ',' + lv[k].s] = lv[k].e;
+    for (k = 0; k < occ.length; k++) eps[orbKey(occ[k])] = occ[k].e;
+    var sources = occ.filter(function (o) { return o.e > homo - 0.6; });
+    var targets = [];
+    for (var key in eps) {
+      var p = key.split(','), l = +p[1], cap = 2 * l + 1, have = best.map[key] || 0;
+      if (have < cap && eps[key] < homo + 0.35) targets.push({ key: key, e: eps[key] });
+    }
+    var moves = [];
+    for (var a = 0; a < sources.length; a++) for (var b = 0; b < targets.length; b++) {
+      var sk = orbKey(sources[a]); if (sk === targets[b].key) continue;
+      moves.push({ from: sk, to: targets[b].key, est: targets[b].e - sources[a].e });
+    }
+    moves.sort(function (x, y) { return x.est - y.est; });
+    var improved = null;
+    var lim = Math.min(moves.length, 10);
+    for (var m = 0; m < lim; m++) {
+      var nm = Object.assign({}, best.map);
+      nm[moves[m].from]--; nm[moves[m].to] = (nm[moves[m].to] || 0) + 1;
+      var res = scf(g, occsFromMap(nm), best.V, { eg: energiesOf(best) });
+      tries++;
+      if (res.ok && res.E < best.E - 1e-7 && (!improved || res.E < improved.E)) { res.map = nm; improved = res; }
+    }
+    if (!improved) break;
+    if (log) log('  migliora: ' + configString(improved.map) + '  E=' + improved.E.toFixed(6));
+    best = improved;
+  }
+  best.tries = tries;
+  return best;
+}
+
+var SUP = { '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹' };
+function shellTotals(map) {
+  var t = {};
+  for (var key in map) { if (!map[key]) continue; var p = key.split(','); var k2 = p[0] + LETTERS[+p[1]]; t[k2] = (t[k2] || 0) + map[key]; }
+  return t;
+}
+function configString(map, plain) {
+  var t = shellTotals(map), keys = Object.keys(t);
+  keys.sort(function (a, b) { var na = parseInt(a), nb = parseInt(b); return na - nb || LETTERS.indexOf(a.slice(-1)) - LETTERS.indexOf(b.slice(-1)); });
+  return keys.map(function (k) { var v = String(t[k]); return k + (plain ? v : v.split('').map(function (c) { return SUP[c]; }).join('')); }).join(' ');
+}
+
+// Calcolo completo di un atomo: solo Z in ingresso.
+function computeAtom(Z, opts) {
+  opts = opts || {};
+  var t0 = Date.now();
+  var g = makeGrid(Z, opts.dx, opts.rmax);
+  var maxn = Z <= 2 ? 3 : Z <= 10 ? 4 : Z <= 36 ? 5 : Z <= 54 ? 6 : 7;
+  var au = aufbauSCF(g, Z, maxn);
+  var neu = { ok: false }, nstart = 0;
+  if (au) {
+    var starts = candidateStarts(au, Z);
+    // si valuta ogni partenza e si cerca a partire dalla migliore
+    var bestStart = null;
+    for (var j = 0; j < starts.length; j++) {
+      var t = scf(g, occsFromMap(starts[j]), au.V); nstart++;
+      if (t.ok && (!bestStart || t.E < bestStart.E)) { t.map = starts[j]; bestStart = t; }
+    }
+    if (bestStart) neu = searchConfig(g, bestStart.map, bestStart.V, maxn, opts.log, bestStart);
+  }
+  if (!neu.ok) {
+    var V0 = startPotential(g);
+    neu = searchConfig(g, initialFill(g, V0, Z, maxn), [V0, V0], maxn, opts.log);
+  }
+  if (!neu.ok) return { Z: Z, ok: false };
+  // Catione: si toglie un elettrone dai livelli piu' esterni, poi si lascia riassestare.
+  var homo = -1e9; neu.orbs.forEach(function (o) { if (o.e > homo) homo = o.e; });
+  var cand = neu.orbs.filter(function (o) { return o.e > homo - 0.6; });
+  var bestCat = null, tries = neu.tries + nstart;
+  if (Z === 1) { bestCat = { ok: true, E: 0, map: {} }; }
+  else {
+    for (var k = 0; k < cand.length; k++) {
+      var nm = Object.assign({}, neu.map); nm[orbKey(cand[k])]--;
+      var c = scf(g, occsFromMap(nm), neu.V, { eg: energiesOf(neu) }); tries++;
+      if (c.ok && (!bestCat || c.E < bestCat.E)) { c.map = nm; bestCat = c; }
+    }
+    if (bestCat) { var cs = searchConfig(g, bestCat.map, bestCat.V, maxn); tries += cs.tries; if (cs.ok && cs.E <= bestCat.E) bestCat = cs; }
+  }
+  if (!bestCat) return { Z: Z, ok: false };
+  var IE = (bestCat.E - neu.E) * HA2EV;
+  var Nu = 0, Nd = 0; for (var key in neu.map) { if (key.slice(-1) === '0') Nu += neu.map[key]; else Nd += neu.map[key]; }
+  // densita' radiale per il grafico: 4 pi r^2 n(r), campionata
+  var dens = [];
+  var step = Math.max(1, Math.floor(g.mesh / 220));
+  for (var i = 0; i <= g.mesh; i += step) { if (g.r[i] > 12) break; if (g.r[i] < 1e-3) continue; dens.push([+g.r[i].toPrecision(5), +(4 * Math.PI * g.r2[i] * (neu.nu[i] + neu.nd[i])).toPrecision(5)]); }
+  var orbs = neu.orbs.map(function (o) {
+    var rm = 0; for (var i2 = 0; i2 <= g.mesh; i2++) rm += o.y[i2] * o.y[i2] * g.r2[i2] * g.r[i2] * g.dx;
+    return { n: o.n, l: o.l, s: o.s, occ: o.occ, e: o.e, r: rm };
+  });
+  return {
+    Z: Z, ok: true, E: neu.E, Ecat: bestCat.E, IE: IE,
+    map: neu.map, config: configString(neu.map), configPlain: configString(neu.map, true),
+    catConfig: configString(bestCat.map), unpaired: Math.abs(Nu - Nd),
+    orbs: orbs, dens: dens, tries: tries, ms: Date.now() - t0
+  };
+}
+
+if (typeof module !== 'undefined') module.exports = { computeAtom: computeAtom, makeGrid: makeGrid, scf: scf, solveRadial: solveRadial, xc: xc, startPotential: startPotential, occsFromMap: occsFromMap, configString: configString, shellTotals: shellTotals, HA2EV: HA2EV };
+
+</script>
+<script>
+// BUSTA SIGILLATA — valori misurati (NIST ASD, via PDG 2024 Tab. 5.1).
+// Il motore NON vede mai questo file: lo usa solo il valutatore.
+// Formato: [Z, simbolo, configurazione fondamentale misurata, energia di prima ionizzazione (eV)]
+const BUSTA = [
+[1,"H","1s",13.5984],[2,"He","1s2",24.5874],[3,"Li","(He) 2s",5.3917],[4,"Be","(He) 2s2",9.3227],
+[5,"B","(He) 2s2 2p",8.2980],[6,"C","(He) 2s2 2p2",11.2603],[7,"N","(He) 2s2 2p3",14.5341],[8,"O","(He) 2s2 2p4",13.6181],
+[9,"F","(He) 2s2 2p5",17.4228],[10,"Ne","(He) 2s2 2p6",21.5645],[11,"Na","(Ne) 3s",5.1391],[12,"Mg","(Ne) 3s2",7.6462],
+[13,"Al","(Ne) 3s2 3p",5.9858],[14,"Si","(Ne) 3s2 3p2",8.1517],[15,"P","(Ne) 3s2 3p3",10.4867],[16,"S","(Ne) 3s2 3p4",10.3600],
+[17,"Cl","(Ne) 3s2 3p5",12.9676],[18,"Ar","(Ne) 3s2 3p6",15.7596],[19,"K","(Ar) 4s",4.3407],[20,"Ca","(Ar) 4s2",6.1132],
+[21,"Sc","(Ar) 3d 4s2",6.5615],[22,"Ti","(Ar) 3d2 4s2",6.8281],[23,"V","(Ar) 3d3 4s2",6.7462],[24,"Cr","(Ar) 3d5 4s",6.7665],
+[25,"Mn","(Ar) 3d5 4s2",7.4340],[26,"Fe","(Ar) 3d6 4s2",7.9025],[27,"Co","(Ar) 3d7 4s2",7.8810],[28,"Ni","(Ar) 3d8 4s2",7.6399],
+[29,"Cu","(Ar) 3d10 4s",7.7264],[30,"Zn","(Ar) 3d10 4s2",9.3942],[31,"Ga","(Ar) 3d10 4s2 4p",5.9993],[32,"Ge","(Ar) 3d10 4s2 4p2",7.8994],
+[33,"As","(Ar) 3d10 4s2 4p3",9.7886],[34,"Se","(Ar) 3d10 4s2 4p4",9.7524],[35,"Br","(Ar) 3d10 4s2 4p5",11.8138],[36,"Kr","(Ar) 3d10 4s2 4p6",13.9996],
+[37,"Rb","(Kr) 5s",4.1771],[38,"Sr","(Kr) 5s2",5.6949],[39,"Y","(Kr) 4d 5s2",6.2173],[40,"Zr","(Kr) 4d2 5s2",6.6341],
+[41,"Nb","(Kr) 4d4 5s",6.7589],[42,"Mo","(Kr) 4d5 5s",7.0924],[43,"Tc","(Kr) 4d5 5s2",7.1194],[44,"Ru","(Kr) 4d7 5s",7.3605],
+[45,"Rh","(Kr) 4d8 5s",7.4589],[46,"Pd","(Kr) 4d10",8.3368],[47,"Ag","(Kr) 4d10 5s",7.5762],[48,"Cd","(Kr) 4d10 5s2",8.9938],
+[49,"In","(Kr) 4d10 5s2 5p",5.7864],[50,"Sn","(Kr) 4d10 5s2 5p2",7.3439],[51,"Sb","(Kr) 4d10 5s2 5p3",8.6084],[52,"Te","(Kr) 4d10 5s2 5p4",9.0098],
+[53,"I","(Kr) 4d10 5s2 5p5",10.4513],[54,"Xe","(Kr) 4d10 5s2 5p6",12.1298],[55,"Cs","(Xe) 6s",3.8939],[56,"Ba","(Xe) 6s2",5.2117],
+[57,"La","(Xe) 5d 6s2",5.5769],[58,"Ce","(Xe) 4f 5d 6s2",5.5386],[59,"Pr","(Xe) 4f3 6s2",5.4702],[60,"Nd","(Xe) 4f4 6s2",5.5250],
+[61,"Pm","(Xe) 4f5 6s2",5.5819],[62,"Sm","(Xe) 4f6 6s2",5.6437],[63,"Eu","(Xe) 4f7 6s2",5.6704],[64,"Gd","(Xe) 4f7 5d 6s2",6.1498],
+[65,"Tb","(Xe) 4f9 6s2",5.8638],[66,"Dy","(Xe) 4f10 6s2",5.9391],[67,"Ho","(Xe) 4f11 6s2",6.0215],[68,"Er","(Xe) 4f12 6s2",6.1077],
+[69,"Tm","(Xe) 4f13 6s2",6.1844],[70,"Yb","(Xe) 4f14 6s2",6.2542],[71,"Lu","(Xe) 4f14 5d 6s2",5.4259],[72,"Hf","(Xe) 4f14 5d2 6s2",6.8251],
+[73,"Ta","(Xe) 4f14 5d3 6s2",7.5496],[74,"W","(Xe) 4f14 5d4 6s2",7.8640],[75,"Re","(Xe) 4f14 5d5 6s2",7.8335],[76,"Os","(Xe) 4f14 5d6 6s2",8.4382],
+[77,"Ir","(Xe) 4f14 5d7 6s2",8.9670],[78,"Pt","(Xe) 4f14 5d9 6s",8.9588],[79,"Au","(Xe) 4f14 5d10 6s",9.2256],[80,"Hg","(Xe) 4f14 5d10 6s2",10.4375],
+[81,"Tl","(Hg) 6p",6.1083],[82,"Pb","(Hg) 6p2",7.4167],[83,"Bi","(Hg) 6p3",7.2855],[84,"Po","(Hg) 6p4",8.4181],
+[85,"At","(Hg) 6p5",9.3175],[86,"Rn","(Hg) 6p6",10.7485],[87,"Fr","(Rn) 7s",4.0727],[88,"Ra","(Rn) 7s2",5.2784],
+[89,"Ac","(Rn) 6d 7s2",5.3802],[90,"Th","(Rn) 6d2 7s2",6.3067],[91,"Pa","(Rn) 5f2 6d 7s2",5.89],[92,"U","(Rn) 5f3 6d 7s2",6.1941],
+[93,"Np","(Rn) 5f4 6d 7s2",6.2655],[94,"Pu","(Rn) 5f6 7s2",6.0258],[95,"Am","(Rn) 5f7 7s2",5.9738],[96,"Cm","(Rn) 5f7 6d 7s2",5.9914],
+[97,"Bk","(Rn) 5f9 7s2",6.1979],[98,"Cf","(Rn) 5f10 7s2",6.2819],[99,"Es","(Rn) 5f11 7s2",6.3676],[100,"Fm","(Rn) 5f12 7s2",6.50],
+[101,"Md","(Rn) 5f13 7s2",6.58],[102,"No","(Rn) 5f14 7s2",6.6262],[103,"Lr","(Rn) 5f14 7s2 7p",4.96]
+];
+if (typeof module !== 'undefined') module.exports = { BUSTA };
+
+</script>
+<script>
+(function(){
+"use strict";
+var SYM="H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga Ge As Se Br Kr Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs Ba La Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa U Np Pu Am Cm Bk Cf Es Fm Md No Lr Rf Db Sg Bh Hs Mt Ds Rg Cn Nh Fl Mc Lv Ts Og".split(" ");
+var NOMI="idrogeno elio litio berillio boro carbonio azoto ossigeno fluoro neon sodio magnesio alluminio silicio fosforo zolfo cloro argon potassio calcio scandio titanio vanadio cromo manganese ferro cobalto nichel rame zinco gallio germanio arsenico selenio bromo kripton rubidio stronzio ittrio zirconio niobio molibdeno tecnezio rutenio rodio palladio argento cadmio indio stagno antimonio tellurio iodio xeno cesio bario lantanio cerio praseodimio neodimio promezio samario europio gadolinio terbio disprosio olmio erbio tulio itterbio lutezio afnio tantalio tungsteno renio osmio iridio platino oro mercurio tallio piombo bismuto polonio astato radon francio radio attinio torio protoattinio uranio nettunio plutonio americio curio berkelio californio einsteinio fermio mendelevio nobelio laurenzio rutherfordio dubnio seaborgio bohrio hassio meitnerio darmstadtio roentgenio copernicio nihonio flerovio moscovio livermorio tennesso oganesson".split(" ");
+var ZMAX=103, KEY="lab-vergine-l0-v1", KEYB="lab-vergine-l0-busta";
+var LET=["s","p","d","f"];
+var SUPD={"0":"⁰","1":"¹","2":"²","3":"³","4":"⁴","5":"⁵","6":"⁶","7":"⁷","8":"⁸","9":"⁹"};
+function sup(n){return String(n).split("").map(function(c){return SUPD[c];}).join("");}
+function cap(s){return s.charAt(0).toUpperCase()+s.slice(1);}
+function fmt(x,d){return x.toLocaleString("it-IT",{minimumFractionDigits:d,maximumFractionDigits:d});}
+function $(id){return document.getElementById(id);}
+
+// ---------- archivio locale ----------
+var results={}, bustaOpen=false;
+try{results=JSON.parse(localStorage.getItem(KEY)||"{}")||{};}catch(e){results={};}
+try{bustaOpen=localStorage.getItem(KEYB)==="1";}catch(e){}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(results));}catch(e){}}
+
+// ---------- busta: valori misurati ----------
+var CORES={He:"1s2",Ne:"1s2 2s2 2p6",Ar:"1s2 2s2 2p6 3s2 3p6"};
+CORES.Kr=CORES.Ar+" 3d10 4s2 4p6";CORES.Xe=CORES.Kr+" 4d10 5s2 5p6";CORES.Rn=CORES.Xe+" 4f14 5d10 6s2 6p6";CORES.Hg=CORES.Xe+" 4f14 5d10 6s2";
+function totalsFromString(c){
+  var t={};c.replace(/\((\w+)\)/,function(m,k){return CORES[k];}).trim().split(/\s+/).forEach(function(tok){
+    var m=tok.match(/^(\d)([spdf])(\d*)$/); if(!m)return; var k=m[1]+m[2]; t[k]=(t[k]||0)+(m[3]?+m[3]:1);});
+  return t;
+}
+var MEAS={};
+BUSTA.forEach(function(b){MEAS[b[0]]={cfg:totalsFromString(b[2]),ie:b[3]};});
+function totalsFromMap(map){var t={};for(var k in map){if(!map[k])continue;var p=k.split(",");var kk=p[0]+LET[+p[1]];t[kk]=(t[kk]||0)+map[k];}return t;}
+function sameTotals(a,b){var ks={},k;for(k in a)ks[k]=1;for(k in b)ks[k]=1;for(k in ks)if((a[k]||0)!==(b[k]||0))return false;return true;}
+var CORE_ORDER=["Rn","Xe","Kr","Ar","Ne","He"];
+function shellSort(a,b){return parseInt(a)-parseInt(b)||LET.indexOf(a.slice(-1))-LET.indexOf(b.slice(-1));}
+function cfgText(t,full){
+  var rest=Object.assign({},t),core="";
+  if(!full){for(var i=0;i<CORE_ORDER.length;i++){var ct=totalsFromString(CORES[CORE_ORDER[i]]),ok=true;
+    for(var k in ct)if(rest[k]!==ct[k]){ok=false;break;}
+    if(ok){for(k in ct)delete rest[k];core="["+CORE_ORDER[i]+"] ";break;}}}
+  var ks=Object.keys(rest).filter(function(k){return rest[k]>0;}).sort(shellSort);
+  return core+ks.map(function(k){return k+sup(rest[k]);}).join(" ");
+}
+function isMatch(Z){var r=results[Z];return r&&MEAS[Z]&&sameTotals(totalsFromMap(r.map),MEAS[Z].cfg);}
+
+// ---------- tavola periodica ----------
+function pos(Z){
+  if(Z===1)return[1,1]; if(Z===2)return[1,18];
+  if(Z<=4)return[2,Z-2]; if(Z<=10)return[2,Z+3];
+  if(Z<=12)return[3,Z-10]; if(Z<=18)return[3,Z-5];
+  if(Z<=36)return[4,Z-18]; if(Z<=54)return[5,Z-36];
+  if(Z<=56)return[6,Z-54]; if(Z<=71)return[9,Z-53]; if(Z<=86)return[6,Z-68];
+  if(Z<=88)return[7,Z-86]; if(Z<=103)return[10,Z-85]; return[7,Z-100];
+}
+var cells={}, selected=null;
+(function build(){
+  var t=$("ptable"),frag=document.createDocumentFragment();
+  for(var Z=1;Z<=118;Z++){
+    var p=pos(Z),b=document.createElement("button");
+    b.className="cell"+(Z>ZMAX?" off":"");b.style.gridRow=p[0];b.style.gridColumn=p[1];
+    b.innerHTML='<span class="z">'+Z+'</span><span class="s">'+SYM[Z-1]+'</span>';
+    b.setAttribute("aria-label",cap(NOMI[Z-1])+", Z "+Z);
+    if(Z>ZMAX){b.disabled=true;b.title="Oltre il 103 non esistono misure da confrontare";}
+    else b.addEventListener("click",(function(z){return function(){pick(z,true);};})(Z));
+    cells[Z]=b;frag.appendChild(b);
+  }
+  [[6,"57–71"],[7,"89–103"]].forEach(function(g){var d=document.createElement("div");d.className="gap-label";d.style.gridRow=g[0];d.textContent=g[1];frag.appendChild(d);});
+  var sp=document.createElement("div");sp.style.gridRow=8;sp.style.gridColumn=1;sp.style.height="6px";frag.appendChild(sp);
+  t.appendChild(frag);
+  t.style.gridTemplateRows="repeat(7,40px) 10px repeat(2,40px)";
+})();
+function paintCell(Z){
+  var c=cells[Z];if(!c)return;
+  c.classList.toggle("done",!!results[Z]);
+  c.classList.toggle("run",!!(current&&current.Z===Z));
+  c.classList.toggle("sel",selected===Z);
+  var show=bustaOpen&&results[Z]&&MEAS[Z];
+  c.classList.toggle("match",!!(show&&isMatch(Z)));
+  c.classList.toggle("miss",!!(show&&!isMatch(Z)));
+}
+function paintAll(){for(var Z=1;Z<=ZMAX;Z++)paintCell(Z);}
+
+// ---------- calcolo (in un worker, a rate) ----------
+var worker=null, useMain=false, running=false, current=null, queue=[], wake=null;
+function makeWorker(){
+  if(worker||useMain)return;
+  try{
+    var src=$("engine").textContent+"\nonmessage=function(e){var r=computeAtom(e.data.Z);postMessage(r);};";
+    worker=new Worker(URL.createObjectURL(new Blob([src],{type:"text/javascript"})));
+    worker.onmessage=function(ev){done(ev.data);};
+    worker.onerror=function(){worker=null;useMain=true;if(current){var z=current.Z;current=null;queue.unshift(z);step();}};
+  }catch(e){worker=null;useMain=true;}
+}
+function compact(r){
+  return {Z:r.Z,ok:r.ok,E:r.E,Ecat:r.Ecat,IE:r.IE,map:r.map,unpaired:r.unpaired,tries:r.tries,ms:r.ms,
+    orbs:(r.orbs||[]).map(function(o){return [o.n,o.l,o.s,o.occ,+o.e.toFixed(6),+o.r.toFixed(4)];}),
+    dens:(r.dens||[]).filter(function(_,i){return i%2===0;})};
+}
+function nextMissing(){for(var Z=1;Z<=ZMAX;Z++)if(!results[Z])return Z;return null;}
+function step(){
+  if(current)return;
+  var Z=queue.length?queue.shift():(running?nextMissing():null);
+  while(Z&&results[Z]&&queue.length)Z=queue.shift();
+  if(!Z||results[Z]){running=false;releaseWake();ui();return;}
+  current={Z:Z,t0:Date.now()};paintCell(Z);ui();
+  makeWorker();
+  if(worker)worker.postMessage({Z:Z});
+  else setTimeout(function(){var r;try{r=computeAtom(Z);}catch(e){r={Z:Z,ok:false};}done(r);},40);
+}
+function done(r){
+  var Z=current?current.Z:r.Z;current=null;
+  if(r&&r.ok){results[Z]=compact(r);save();}
+  else{results[Z]=null;delete results[Z];setStatus("Il calcolo di Z "+Z+" non è andato a buon fine.");}
+  paintCell(Z);
+  if(selected===Z||selected===null){selected=Z;renderDetail();}
+  drawIE();renderBusta();step();
+}
+function start(){running=true;requestWake();step();ui();}
+function pause(){
+  running=false;queue=[];
+  if(current){if(worker){worker.terminate();worker=null;}var z=current.Z;current=null;paintCell(z);}
+  releaseWake();ui();
+}
+function requestWake(){try{if(navigator.wakeLock&&!wake)navigator.wakeLock.request("screen").then(function(w){wake=w;}).catch(function(){});}catch(e){}}
+function releaseWake(){try{if(wake){wake.release();wake=null;}}catch(e){}}
+document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible"&&running){wake=null;requestWake();}});
+$("runAll").addEventListener("click",function(){running?pause():start();});
+
+function count(){var n=0;for(var Z=1;Z<=ZMAX;Z++)if(results[Z])n++;return n;}
+function setStatus(t){$("status").textContent=t;}
+function ui(){
+  var n=count();
+  $("bar").style.width=(100*n/ZMAX)+"%";
+  var b=$("runAll");
+  if(running){b.textContent="Metti in pausa";b.classList.remove("primary");}
+  else{b.textContent=n===0?"Calcola tutta la tavola":n<ZMAX?"Riprendi il calcolo":"Tavola completa";b.classList.add("primary");b.disabled=n>=ZMAX;}
+  if(current){
+    // stima del tempo: gli atomi pesanti costano di piu', si scala sul tempo reale degli atomi gia' fatti
+    var w=function(z){return 500+70*z;},spent=0,model=0,left=0;
+    for(var Z=1;Z<=ZMAX;Z++){if(results[Z]){spent+=results[Z].ms;model+=w(Z);}else left+=w(Z);}
+    var eta=model>0?Math.round(spent/model*left/60000):null;
+    var etaTxt=eta===null?"":eta<=1?", circa un minuto alla fine.":", circa "+eta+" minuti alla fine.";
+    setStatus("Sto calcolando "+NOMI[current.Z-1]+" (Z "+current.Z+"). "+n+" su "+ZMAX+" fatti"+(running&&etaTxt?etaTxt:"."));
+  } else setStatus(n===0?"Nessun elemento calcolato. Tocca un elemento per calcolarlo, o calcola tutta la tavola: ci vogliono alcuni minuti e puoi interrompere quando vuoi.":n+" su "+ZMAX+" elementi calcolati.");
+}
+
+// ---------- scheda elemento ----------
+var fullCfg=false, allLevels=false;
+function pick(Z,fromTap){
+  selected=Z;paintAll();
+  if(!results[Z]&&!(current&&current.Z===Z)){queue.unshift(Z);step();}
+  renderDetail();
+  if(fromTap&&window.innerWidth<700)$("detail").scrollIntoView({behavior:"smooth",block:"start"});
+}
+function levelsOf(r){
+  var g={};
+  r.orbs.forEach(function(o){var k=o[0]+LET[o[1]];g[k]=g[k]||{k:k,up:0,dn:0,eu:null,ed:null,r:0};
+    if(o[2]===0){g[k].up=o[3];g[k].eu=o[4];}else{g[k].dn=o[3];g[k].ed=o[4];} g[k].r=Math.max(g[k].r,o[5]);});
+  return Object.keys(g).map(function(k){var x=g[k];x.top=Math.max(x.eu===null?-1e9:x.eu,x.ed===null?-1e9:x.ed);return x;})
+    .sort(function(a,b){return b.top-a.top;});
+}
+function renderDetail(){
+  var el=$("detail"),Z=selected;
+  if(!Z){el.innerHTML='<p class="empty">Tocca un elemento della tavola per vedere che cosa ha scoperto il motore.</p>';return;}
+  var r=results[Z],h='<div class="el-head"><div class="el-sym">'+SYM[Z-1]+'</div><div><div class="el-name">'+cap(NOMI[Z-1])+'</div><div class="muted small">Z = '+Z+', cioè '+Z+' protoni</div></div>'+
+    '<div class="el-nav"><button id="prevEl" aria-label="Elemento precedente"'+(Z<=1?" disabled":"")+'>‹</button><button id="nextEl" aria-label="Elemento successivo"'+(Z>=ZMAX?" disabled":"")+'>›</button></div></div>';
+  if(!r){
+    h+=(current&&current.Z===Z)?'<p>Sto calcolando questo atomo: di solito servono pochi secondi.</p>':'<p class="empty">Non ancora calcolato. È in coda.</p>';
+    el.innerHTML=h;bindNav();return;
+  }
+  var t=totalsFromMap(r.map);
+  h+='<h3 class="muted" style="font-weight:400">Configurazione scoperta</h3><div class="config'+(fullCfg?" full":"")+'">'+cfgText(t,fullCfg)+'</div>'+
+     '<button class="linkish" id="toggleCfg">'+(fullCfg?"Mostra in forma breve":"Mostra tutti i gusci")+'</button>';
+  h+='<div class="facts">'+
+     '<div class="fact"><b>'+fmt(r.IE,2)+' eV</b><span>energia per strappare un elettrone</span></div>'+
+     '<div class="fact"><b>'+r.unpaired+'</b><span>elettroni spaiati</span></div>'+
+     '<div class="fact"><b>'+r.tries+'</b><span>disposizioni provate</span></div>'+
+     '<div class="fact"><b>'+fmt(r.ms/1000,1)+' s</b><span>tempo di calcolo</span></div></div>';
+  if(bustaOpen&&MEAS[Z]){
+    var m=MEAS[Z],same=sameTotals(t,m.cfg),d=r.IE-m.ie;
+    h+='<div class="compare'+(same?"":" bad")+'"><div class="verdict">'+(same?"Stessa configurazione misurata":"Configurazione diversa da quella misurata")+'</div>'+
+       '<p class="small">Misurata: <span style="font-family:var(--serif);font-size:1.05rem">'+cfgText(m.cfg,false)+'</span><br>Energia di ionizzazione misurata: '+fmt(m.ie,2)+' eV. Differenza: '+(d>=0?"+":"−")+fmt(Math.abs(d),2)+' eV ('+fmt(Math.abs(d)/m.ie*100,0)+'%).</p></div>';
+  }
+  h+='<div class="sub"><h3>Dove stanno gli elettroni</h3><canvas id="densChart" height="170" aria-label="Distribuzione degli elettroni attorno al nucleo"></canvas>'+
+     '<p class="muted small">Elettroni in funzione della distanza dal nucleo, in scala logaritmica. Ogni gobba è un guscio: nessuno ha detto al motore che esistono.</p></div>';
+  var lv=levelsOf(r),show=allLevels?lv:lv.slice(0,6);
+  h+='<div class="sub"><h3>Livelli occupati, dal più esterno</h3><table class="levels"><tbody>'+show.map(function(x){
+      var e=x.eu!==null&&x.ed!==null?fmt(x.eu*27.2114,1)+" / "+fmt(x.ed*27.2114,1):fmt((x.eu!==null?x.eu:x.ed)*27.2114,1);
+      return '<tr><td>'+x.k+'</td><td class="arrows">'+"↑".repeat(x.up)+' <span class="dn">'+"↓".repeat(x.dn)+'</span></td><td>'+e+' eV</td></tr>';}).join("")+
+     '</tbody></table>'+(lv.length>6?'<button class="linkish" id="toggleLv" style="margin-top:.4rem">'+(allLevels?"Mostra solo i più esterni":"Mostra tutti i "+lv.length+" livelli")+'</button>':'')+
+     '<p class="muted small">Le frecce sono gli elettroni con spin su e giù. Dove ci sono due valori, sono le energie per i due spin.</p></div>';
+  el.innerHTML=h;bindNav();
+  $("toggleCfg").onclick=function(){fullCfg=!fullCfg;renderDetail();};
+  if($("toggleLv"))$("toggleLv").onclick=function(){allLevels=!allLevels;renderDetail();};
+  drawDensity(r);
+}
+function bindNav(){
+  var p=$("prevEl"),n=$("nextEl");
+  if(p)p.onclick=function(){if(selected>1)pick(selected-1,false);};
+  if(n)n.onclick=function(){if(selected<ZMAX)pick(selected+1,false);};
+}
+
+// ---------- grafici ----------
+function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+function setup(cv){
+  var dpr=window.devicePixelRatio||1,w=cv.clientWidth,h=+cv.getAttribute("height");
+  cv.width=w*dpr;cv.height=h*dpr;cv.style.height=h+"px";var c=cv.getContext("2d");c.setTransform(dpr,0,0,dpr,0,0);return {c:c,w:w,h:h};
+}
+function drawDensity(r){
+  var cv=$("densChart");if(!cv)return;var s=setup(cv),c=s.c,W=s.w,H=s.h,L=8,R=8,T=10,B=24;
+  var BOHR=0.529177,x0=-2.5,x1=1.2;
+  var pts=r.dens.map(function(p){return [Math.log10(p[0]*BOHR),p[1]*p[0]];}).filter(function(p){return p[0]>=x0&&p[0]<=x1;});
+  var ymax=0;pts.forEach(function(p){if(p[1]>ymax)ymax=p[1];});
+  function X(x){return L+(x-x0)/(x1-x0)*(W-L-R);} function Y(y){return H-B-(y/ymax)*(H-B-T);}
+  c.strokeStyle=css("--line");c.fillStyle=css("--faint");c.font="11px "+css("--sans");c.lineWidth=1;
+  [-2,-1,0,1].forEach(function(e){var x=X(e);c.beginPath();c.moveTo(x,T);c.lineTo(x,H-B);c.stroke();
+    var lab=e===-2?"0,01 Å":e===-1?"0,1 Å":e===0?"1 Å":"10 Å";c.textAlign="center";c.fillText(lab,x,H-6);});
+  c.beginPath();c.moveTo(X(pts[0][0]),Y(0));pts.forEach(function(p){c.lineTo(X(p[0]),Y(p[1]));});c.lineTo(X(pts[pts.length-1][0]),Y(0));c.closePath();
+  c.fillStyle=css("--na-soft");c.fill();
+  c.beginPath();pts.forEach(function(p,i){i?c.lineTo(X(p[0]),Y(p[1])):c.moveTo(X(p[0]),Y(p[1]));});c.strokeStyle=css("--na");c.lineWidth=2;c.stroke();
+}
+var ieGeom=null;
+function drawIE(){
+  var cv=$("ieChart"),s=setup(cv),c=s.c,W=s.w,H=s.h,L=30,R=8,T=10,B=24,ymax=26;
+  function X(z){return L+(z-1)/(ZMAX-1)*(W-L-R);} function Y(v){return H-B-v/ymax*(H-B-T);}
+  ieGeom={X:X,L:L,R:R,W:W};
+  c.font="11px "+css("--sans");c.lineWidth=1;
+  [0,5,10,15,20,25].forEach(function(v){c.strokeStyle=css("--line");c.beginPath();c.moveTo(L,Y(v));c.lineTo(W-R,Y(v));c.stroke();c.fillStyle=css("--faint");c.textAlign="right";c.fillText(v,L-6,Y(v)+4);});
+  [1,20,40,60,80,103].forEach(function(z){c.textAlign="center";c.fillText("Z "+z,X(z),H-6);});
+  c.save();c.textAlign="left";c.fillText("eV",L+4,T+10);c.restore();
+  if(selected){c.strokeStyle=css("--muted");c.setLineDash([3,3]);c.beginPath();c.moveTo(X(selected),T);c.lineTo(X(selected),H-B);c.stroke();c.setLineDash([]);}
+  function series(get,color,w,dots){
+    c.strokeStyle=color;c.lineWidth=w;c.beginPath();var on=false;
+    for(var z=1;z<=ZMAX;z++){var v=get(z);if(v==null){on=false;continue;} if(!on){c.moveTo(X(z),Y(v));on=true;}else c.lineTo(X(z),Y(v));}
+    c.stroke();
+    if(dots){c.fillStyle=color;for(z=1;z<=ZMAX;z++){v=get(z);if(v!=null){c.beginPath();c.arc(X(z),Y(v),2.2,0,7);c.fill();}}}
+  }
+  if(bustaOpen)series(function(z){return MEAS[z]?MEAS[z].ie:null;},css("--cu"),1.6,false);
+  series(function(z){return results[z]?results[z].IE:null;},css("--na"),1.4,true);
+}
+$("ieChart").addEventListener("click",function(ev){
+  if(!ieGeom)return;var rect=this.getBoundingClientRect(),x=ev.clientX-rect.left;
+  var z=Math.round(1+(x-ieGeom.L)/(ieGeom.W-ieGeom.L-ieGeom.R)*(ZMAX-1));z=Math.max(1,Math.min(ZMAX,z));pick(z,false);drawIE();
+});
+
+// ---------- busta sigillata ----------
+var confirmOpen=false;
+function stats(z0,z1){
+  var n=0,ok=0,err=0;for(var z=z0;z<=z1;z++){if(!results[z]||!MEAS[z])continue;n++;if(isMatch(z))ok++;err+=Math.abs(results[z].IE-MEAS[z].ie);}
+  return {n:n,ok:ok,mae:n?err/n:null};
+}
+function renderBusta(){
+  var el=$("busta");
+  if(!bustaOpen){
+    el.innerHTML='<div class="seal"><div class="seal-head"><div class="wax" aria-hidden="true">B</div><h2 style="margin:0">Busta sigillata</h2></div>'+
+      '<p>Dentro ci sono le configurazioni e le energie di ionizzazione misurate in laboratorio (NIST) per gli elementi da 1 a 103. Il motore non le ha mai viste.</p>'+
+      '<p class="muted small">Aprila quando vuoi confrontare: puoi farlo anche a tavola incompleta.</p>'+
+      (confirmOpen?'<div class="confirm"><p>Una volta aperta, su questo telefono resta aperta: i valori misurati compariranno accanto a quelli calcolati.</p><div class="row"><button class="btn primary" id="openYes">Apri la busta</button><button class="btn ghost" id="openNo">Annulla</button></div></div>'
+        :'<button class="btn" id="openB" style="margin-top:.6rem">Apri la busta</button>')+'</div>';
+    if($("openB"))$("openB").onclick=function(){confirmOpen=true;renderBusta();};
+    if($("openYes"))$("openYes").onclick=function(){bustaOpen=true;try{localStorage.setItem(KEYB,"1");}catch(e){}renderBusta();paintAll();renderDetail();drawIE();legend();};
+    if($("openNo"))$("openNo").onclick=function(){confirmOpen=false;renderBusta();};
+    return;
+  }
+  var all=stats(1,ZMAX);
+  var h='<h2>La busta è aperta</h2>';
+  if(!all.n){el.innerHTML=h+'<p class="muted">Calcola qualche elemento per vedere il confronto.</p>';return;}
+  h+='<div class="score"><div class="fact"><b>'+all.ok+' su '+all.n+'</b><span>configurazioni uguali a quelle misurate</span></div>'+
+     '<div class="fact"><b>'+fmt(all.mae,2)+' eV</b><span>errore medio sull\'energia di ionizzazione</span></div></div>';
+  var rows=[["Periodi 1–4",1,36],["Periodo 5",37,54],["Periodo 6",55,86],["Periodo 7",87,103]];
+  h+='<table class="periods"><thead><tr><th>Zona</th><th>Config. uguali</th><th>Errore medio</th></tr></thead><tbody>'+rows.map(function(r){
+    var s=stats(r[1],r[2]);return '<tr><td>'+r[0]+'</td><td>'+(s.n?s.ok+" su "+s.n:"–")+'</td><td>'+(s.n?fmt(s.mae,2)+" eV":"–")+'</td></tr>';}).join("")+'</tbody></table>';
+  if(count()<ZMAX){el.innerHTML=h+'<p class="muted small">Il commento sui risultati compare quando la tavola è tutta calcolata.</p>';return;}
+  h+='<h3>Cosa ci dice il confronto</h3>'+
+     '<p>Senza saperne nulla, il motore ritrova i gusci, la periodicità della tavola e molte anomalie vere, come cromo e rame che preferiscono un solo elettrone nel livello 4s.</p>'+
+     '<p>Dove sbaglia, sbaglia in modo sistematico. Nei metalli di transizione tende a mettere un elettrone in più nei livelli d: è un difetto noto dell\'approssimazione di scambio-correlazione usata. Negli elementi pesanti l\'errore cresce perché manca la relatività: vicino a nuclei con tanti protoni gli elettroni interni sono velocissimi, e questo cambia l\'energia dei livelli esterni.</p>'+
+     '<p class="muted small">È il prossimo passo: aggiungere la relatività e vedere se gli errori dei periodi 6 e 7 si riducono.</p>';
+  el.innerHTML=h;
+}
+function legend(){
+  $("legend").innerHTML='<span><i style="background:var(--na)"></i>calcolata dal motore</span>'+(bustaOpen?'<span><i style="background:var(--cu)"></i>misurata (busta)</span>':'');
+}
+
+// ---------- azzeramento ----------
+$("reset").onclick=function(){$("resetConfirm").hidden=false;$("resetConfirm").scrollIntoView({behavior:"smooth",block:"center"});};
+$("resetNo").onclick=function(){$("resetConfirm").hidden=true;};
+$("resetYes").onclick=function(){pause();results={};bustaOpen=false;confirmOpen=false;save();try{localStorage.removeItem(KEYB);}catch(e){}
+  $("resetConfirm").hidden=true;selected=null;paintAll();renderDetail();renderBusta();drawIE();legend();ui();};
+
+window.addEventListener("resize",function(){drawIE();if(selected&&results[selected])drawDensity(results[selected]);});
+
+// ---------- avvio ----------
+(function init(){
+  var last=null;for(var Z=1;Z<=ZMAX;Z++)if(results[Z])last=Z;
+  selected=last;paintAll();renderDetail();renderBusta();legend();ui();
+  var go=function(){drawIE();if(selected&&results[selected])drawDensity(results[selected]);};
+  if(document.fonts&&document.fonts.ready)document.fonts.ready.then(go);else go();
+  if("serviceWorker" in navigator&&location.protocol==="https:"){try{navigator.serviceWorker.register("sw.js").catch(function(){});}catch(e){}}
+})();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Laboratorio vergine</title>
+<meta name="theme-color" content="#1d2337">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Lab vergine">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Newsreader:opsz,wght@6..72,500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#1d2337; --panel:#252c44; --panel2:#2c3450; --line:#3b4566; --text:#e9ecf5; --muted:#a6aec7; --faint:#6f789a;
+  --na:#f2c14e; --na-soft:rgba(242,193,78,.16); --cu:#4cc4b6; --cu-soft:rgba(76,196,182,.16); --li:#e8607a; --li-soft:rgba(232,96,122,.16);
+  --serif:"Newsreader",Georgia,serif; --sans:"Atkinson Hyperlegible",system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box}
+html{background:var(--bg);-webkit-text-size-adjust:100%}
+body{margin:0;color:var(--text);font-family:var(--sans);font-size:16px;line-height:1.5;
+  padding:calc(env(safe-area-inset-top) + 12px) calc(env(safe-area-inset-right) + 16px) calc(env(safe-area-inset-bottom) + 28px) calc(env(safe-area-inset-left) + 16px)}
+main{max-width:760px;margin:0 auto}
+h1{font-family:var(--serif);font-weight:500;font-size:2.3rem;line-height:1.05;margin:.4rem 0 .35rem;letter-spacing:-.01em}
+h2{font-family:var(--serif);font-weight:500;font-size:1.45rem;line-height:1.2;margin:0 0 .5rem}
+h3{font-size:1rem;margin:0 0 .4rem;font-weight:700}
+p{margin:.35rem 0}
+.lede{color:var(--muted);max-width:36em;margin-bottom:1.2rem}
+.muted{color:var(--muted)} .small{font-size:.86rem}
+section{margin:1.6rem 0}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,.cell:focus-visible,summary:focus-visible{outline:2px solid var(--na);outline-offset:2px}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:.6rem 1rem;font-weight:700}
+.btn.primary{background:var(--na);border-color:var(--na);color:#2a2006}
+.btn.ghost{background:transparent}
+.btn[disabled]{opacity:.45;cursor:default}
+
+/* tavola periodica */
+.table-wrap{overflow-x:auto;margin:0 -16px;padding:4px 16px 10px;-webkit-overflow-scrolling:touch;scrollbar-width:thin}
+.ptable{display:grid;grid-template-columns:repeat(18,34px);grid-auto-rows:40px;gap:3px;width:max-content}
+.cell{position:relative;border:1px solid var(--line);border-radius:6px;background:transparent;padding:0;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;color:var(--muted)}
+.cell .z{font-size:9px;color:var(--faint);margin-bottom:3px}
+.cell .s{font-size:13px;font-weight:700}
+.cell.done{background:var(--na-soft);border-color:rgba(242,193,78,.45);color:var(--na)}
+.cell.run{border-color:var(--na);color:var(--text);animation:pulse 1.1s ease-in-out infinite}
+.cell.sel{box-shadow:0 0 0 2px var(--text)}
+.cell.off{opacity:.3;cursor:default}
+.cell.match::after,.cell.miss::after{content:"";position:absolute;left:5px;right:5px;bottom:3px;height:3px;border-radius:2px}
+.cell.match::after{background:var(--cu)} .cell.miss::after{background:var(--li)}
+.gap-label{grid-column:3;font-size:9px;color:var(--faint);display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.1}
+@keyframes pulse{50%{background:var(--na-soft)}}
+@media (prefers-reduced-motion:reduce){.cell.run{animation:none;background:var(--na-soft)}}
+
+.scroll-hint{margin:.1rem 0 .6rem}
+@media (min-width:700px){.scroll-hint{display:none}}
+.runbar{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin-top:.4rem}
+.status{font-size:.92rem;color:var(--muted);flex:1 1 220px}
+.progress{height:4px;background:var(--panel2);border-radius:3px;overflow:hidden;margin-top:.7rem}
+.progress>i{display:block;height:100%;width:0;background:var(--na);transition:width .3s}
+
+/* scheda elemento */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:1rem}
+.el-head{display:flex;align-items:flex-end;gap:.9rem;margin-bottom:.6rem}
+.el-sym{font-family:var(--serif);font-size:4.2rem;line-height:.85;color:var(--na)}
+.el-name{font-size:1.15rem;font-weight:700}
+.el-nav{margin-left:auto;display:flex;gap:.4rem}
+.el-nav button{width:40px;height:40px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);font-size:1.1rem}
+.config{font-family:var(--serif);font-size:1.5rem;line-height:1.3;margin:.1rem 0 .2rem;word-break:break-word}
+.config.full{font-size:1.05rem}
+.linkish{background:none;border:0;padding:0;color:var(--muted);text-decoration:underline;text-underline-offset:3px;font-size:.88rem}
+.facts{display:grid;grid-template-columns:1fr 1fr;gap:.7rem 1rem;margin:1rem 0 .4rem}
+.fact b{display:block;font-size:1.35rem;font-variant-numeric:tabular-nums}
+.fact span{font-size:.84rem;color:var(--muted)}
+canvas{display:block;width:100%}
+.levels{width:100%;border-collapse:collapse;font-size:.92rem;margin-top:.3rem}
+.levels td{padding:.32rem 0;border-top:1px solid var(--line);vertical-align:middle}
+.levels td:first-child{font-weight:700;width:3.2rem}
+.levels td.arrows{letter-spacing:.06em;color:var(--na)}
+.levels td.arrows .dn{color:#f7dc9c}
+.levels td:last-child{text-align:right;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.sub{margin-top:1.2rem}
+.compare{margin-top:1rem;border-radius:10px;padding:.8rem .9rem;background:var(--cu-soft);border:1px solid rgba(76,196,182,.45)}
+.compare.bad{background:var(--li-soft);border-color:rgba(232,96,122,.5)}
+.verdict{font-weight:700}
+.compare .verdict{color:var(--cu)} .compare.bad .verdict{color:var(--li)}
+.empty{color:var(--muted)}
+
+/* busta */
+.seal{border:1.5px dashed var(--line);border-radius:14px;padding:1rem;background:repeating-linear-gradient(135deg,transparent 0 14px,rgba(255,255,255,.018) 14px 28px)}
+.seal-head{display:flex;gap:.8rem;align-items:center;margin-bottom:.4rem}
+.wax{flex:0 0 42px;height:42px;border-radius:50%;background:var(--li);display:grid;place-items:center;color:#3a0d17;font-family:var(--serif);font-size:1.3rem}
+.confirm{margin-top:.8rem;padding:.8rem;border-radius:10px;background:var(--panel2)}
+.confirm .row{display:flex;gap:.5rem;margin-top:.6rem}
+.score{display:grid;grid-template-columns:1fr 1fr;gap:.7rem 1rem;margin:.6rem 0 1rem}
+.periods{width:100%;border-collapse:collapse;font-size:.9rem;margin:.4rem 0 1rem}
+.periods th,.periods td{text-align:left;padding:.35rem .3rem;border-top:1px solid var(--line);font-variant-numeric:tabular-nums}
+.periods th{font-weight:400;color:var(--muted)}
+.legend{display:flex;gap:1rem;flex-wrap:wrap;font-size:.84rem;color:var(--muted);margin:.3rem 0 .2rem}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:.35rem}
+details{border-top:1px solid var(--line);padding-top:.8rem}
+summary{cursor:pointer;font-family:var(--serif);font-size:1.3rem;list-style:none}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"+";display:inline-block;width:1.1em;color:var(--na)}
+details[open] summary::before{content:"–"}
+.laws{padding-left:1.1rem;margin:.5rem 0}
+.laws li{margin:.35rem 0}
+footer{margin-top:2rem;color:var(--faint);font-size:.82rem;display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;align-items:center}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>Laboratorio vergine</h1>
+  <p class="lede">Livello 0, l'atomo. Il motore conosce solo il numero di protoni: come si dispongono gli elettroni e quanta energia serve per strapparne uno lo scopre da solo, con le leggi della fisica. I risultati restano su questo telefono.</p>
+</header>
+
+<section aria-label="Tavola periodica">
+  <div class="table-wrap"><div class="ptable" id="ptable"></div></div>
+  <p class="muted small scroll-hint">Scorri la tavola di lato per vedere tutti gli elementi.</p>
+  <div class="runbar">
+    <button class="btn primary" id="runAll">Calcola tutta la tavola</button>
+    <div class="status" id="status" aria-live="polite"></div>
+  </div>
+  <div class="progress" aria-hidden="true"><i id="bar"></i></div>
+</section>
+
+<section id="detail" class="card" aria-live="polite"></section>
+
+<section id="discovery">
+  <h2>Cosa ha scoperto</h2>
+  <p class="muted small" id="discText">Energia necessaria per strappare un elettrone, elemento per elemento. Tocca il grafico per scegliere un elemento.</p>
+  <div class="legend" id="legend"><span><i style="background:var(--na)"></i>calcolata dal motore</span></div>
+  <canvas id="ieChart" height="220" aria-label="Grafico dell'energia di ionizzazione in funzione del numero atomico"></canvas>
+</section>
+
+<section id="busta"></section>
+
+<section>
+<details>
+  <summary>Cosa sa il motore</summary>
+  <ul class="laws">
+    <li><b>Dato in ingresso:</b> il numero di protoni Z, nient'altro. Nome e simbolo dell'elemento sono solo etichette per te.</li>
+    <li><b>Leggi impostate:</b> equazione di Schrödinger per gli elettroni (nella forma di Kohn-Sham), attrazione di Coulomb tra nucleo ed elettroni, repulsione tra elettroni, principio di Pauli (al massimo 2l+1 elettroni per sottolivello e per spin).</li>
+    <li><b>Scambio e correlazione:</b> approssimazione LSDA. I parametri vengono da simulazioni quantistiche del gas di elettroni, non da misure su atomi.</li>
+    <li><b>Come cerca:</b> lascia che gli elettroni occupino i livelli più bassi, poi prova a spostarne uno alla volta e tiene la disposizione con l'energia più bassa. L'energia di ionizzazione è la differenza di energia tra lo ione e l'atomo neutro.</li>
+    <li><b>Cosa non sa:</b> nessuna tabella di configurazioni, nessuna regola di riempimento, nessun valore misurato. Non conosce ancora la relatività.</li>
+  </ul>
+</details>
+</section>
+
+<footer>
+  <span>Motore 0.1: non relativistico, LSDA (PW92), griglia logaritmica.</span>
+  <button class="linkish" id="reset">Azzera i calcoli</button>
+</footer>
+<div id="resetConfirm" class="confirm" hidden>
+  <p>Cancello tutti i risultati salvati su questo telefono. La busta torna sigillata.</p>
+  <div class="row"><button class="btn" id="resetYes">Cancella i risultati</button><button class="btn ghost" id="resetNo">Annulla</button></div>
+</div>
+</main>
+
+<script id="engine">
+/*ENGINE*/
+</script>
+<script>
+/*BUSTA*/
+</script>
+<script>
+(function(){
+"use strict";
+var SYM="H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga Ge As Se Br Kr Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs Ba La Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa U Np Pu Am Cm Bk Cf Es Fm Md No Lr Rf Db Sg Bh Hs Mt Ds Rg Cn Nh Fl Mc Lv Ts Og".split(" ");
+var NOMI="idrogeno elio litio berillio boro carbonio azoto ossigeno fluoro neon sodio magnesio alluminio silicio fosforo zolfo cloro argon potassio calcio scandio titanio vanadio cromo manganese ferro cobalto nichel rame zinco gallio germanio arsenico selenio bromo kripton rubidio stronzio ittrio zirconio niobio molibdeno tecnezio rutenio rodio palladio argento cadmio indio stagno antimonio tellurio iodio xeno cesio bario lantanio cerio praseodimio neodimio promezio samario europio gadolinio terbio disprosio olmio erbio tulio itterbio lutezio afnio tantalio tungsteno renio osmio iridio platino oro mercurio tallio piombo bismuto polonio astato radon francio radio attinio torio protoattinio uranio nettunio plutonio americio curio berkelio californio einsteinio fermio mendelevio nobelio laurenzio rutherfordio dubnio seaborgio bohrio hassio meitnerio darmstadtio roentgenio copernicio nihonio flerovio moscovio livermorio tennesso oganesson".split(" ");
+var ZMAX=103, KEY="lab-vergine-l0-v1", KEYB="lab-vergine-l0-busta";
+var LET=["s","p","d","f"];
+var SUPD={"0":"⁰","1":"¹","2":"²","3":"³","4":"⁴","5":"⁵","6":"⁶","7":"⁷","8":"⁸","9":"⁹"};
+function sup(n){return String(n).split("").map(function(c){return SUPD[c];}).join("");}
+function cap(s){return s.charAt(0).toUpperCase()+s.slice(1);}
+function fmt(x,d){return x.toLocaleString("it-IT",{minimumFractionDigits:d,maximumFractionDigits:d});}
+function $(id){return document.getElementById(id);}
+
+// ---------- archivio locale ----------
+var results={}, bustaOpen=false;
+try{results=JSON.parse(localStorage.getItem(KEY)||"{}")||{};}catch(e){results={};}
+try{bustaOpen=localStorage.getItem(KEYB)==="1";}catch(e){}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(results));}catch(e){}}
+
+// ---------- busta: valori misurati ----------
+var CORES={He:"1s2",Ne:"1s2 2s2 2p6",Ar:"1s2 2s2 2p6 3s2 3p6"};
+CORES.Kr=CORES.Ar+" 3d10 4s2 4p6";CORES.Xe=CORES.Kr+" 4d10 5s2 5p6";CORES.Rn=CORES.Xe+" 4f14 5d10 6s2 6p6";CORES.Hg=CORES.Xe+" 4f14 5d10 6s2";
+function totalsFromString(c){
+  var t={};c.replace(/\((\w+)\)/,function(m,k){return CORES[k];}).trim().split(/\s+/).forEach(function(tok){
+    var m=tok.match(/^(\d)([spdf])(\d*)$/); if(!m)return; var k=m[1]+m[2]; t[k]=(t[k]||0)+(m[3]?+m[3]:1);});
+  return t;
+}
+var MEAS={};
+BUSTA.forEach(function(b){MEAS[b[0]]={cfg:totalsFromString(b[2]),ie:b[3]};});
+function totalsFromMap(map){var t={};for(var k in map){if(!map[k])continue;var p=k.split(",");var kk=p[0]+LET[+p[1]];t[kk]=(t[kk]||0)+map[k];}return t;}
+function sameTotals(a,b){var ks={},k;for(k in a)ks[k]=1;for(k in b)ks[k]=1;for(k in ks)if((a[k]||0)!==(b[k]||0))return false;return true;}
+var CORE_ORDER=["Rn","Xe","Kr","Ar","Ne","He"];
+function shellSort(a,b){return parseInt(a)-parseInt(b)||LET.indexOf(a.slice(-1))-LET.indexOf(b.slice(-1));}
+function cfgText(t,full){
+  var rest=Object.assign({},t),core="";
+  if(!full){for(var i=0;i<CORE_ORDER.length;i++){var ct=totalsFromString(CORES[CORE_ORDER[i]]),ok=true;
+    for(var k in ct)if(rest[k]!==ct[k]){ok=false;break;}
+    if(ok){for(k in ct)delete rest[k];core="["+CORE_ORDER[i]+"] ";break;}}}
+  var ks=Object.keys(rest).filter(function(k){return rest[k]>0;}).sort(shellSort);
+  return core+ks.map(function(k){return k+sup(rest[k]);}).join(" ");
+}
+function isMatch(Z){var r=results[Z];return r&&MEAS[Z]&&sameTotals(totalsFromMap(r.map),MEAS[Z].cfg);}
+
+// ---------- tavola periodica ----------
+function pos(Z){
+  if(Z===1)return[1,1]; if(Z===2)return[1,18];
+  if(Z<=4)return[2,Z-2]; if(Z<=10)return[2,Z+3];
+  if(Z<=12)return[3,Z-10]; if(Z<=18)return[3,Z-5];
+  if(Z<=36)return[4,Z-18]; if(Z<=54)return[5,Z-36];
+  if(Z<=56)return[6,Z-54]; if(Z<=71)return[9,Z-53]; if(Z<=86)return[6,Z-68];
+  if(Z<=88)return[7,Z-86]; if(Z<=103)return[10,Z-85]; return[7,Z-100];
+}
+var cells={}, selected=null;
+(function build(){
+  var t=$("ptable"),frag=document.createDocumentFragment();
+  for(var Z=1;Z<=118;Z++){
+    var p=pos(Z),b=document.createElement("button");
+    b.className="cell"+(Z>ZMAX?" off":"");b.style.gridRow=p[0];b.style.gridColumn=p[1];
+    b.innerHTML='<span class="z">'+Z+'</span><span class="s">'+SYM[Z-1]+'</span>';
+    b.setAttribute("aria-label",cap(NOMI[Z-1])+", Z "+Z);
+    if(Z>ZMAX){b.disabled=true;b.title="Oltre il 103 non esistono misure da confrontare";}
+    else b.addEventListener("click",(function(z){return function(){pick(z,true);};})(Z));
+    cells[Z]=b;frag.appendChild(b);
+  }
+  [[6,"57–71"],[7,"89–103"]].forEach(function(g){var d=document.createElement("div");d.className="gap-label";d.style.gridRow=g[0];d.textContent=g[1];frag.appendChild(d);});
+  var sp=document.createElement("div");sp.style.gridRow=8;sp.style.gridColumn=1;sp.style.height="6px";frag.appendChild(sp);
+  t.appendChild(frag);
+  t.style.gridTemplateRows="repeat(7,40px) 10px repeat(2,40px)";
+})();
+function paintCell(Z){
+  var c=cells[Z];if(!c)return;
+  c.classList.toggle("done",!!results[Z]);
+  c.classList.toggle("run",!!(current&&current.Z===Z));
+  c.classList.toggle("sel",selected===Z);
+  var show=bustaOpen&&results[Z]&&MEAS[Z];
+  c.classList.toggle("match",!!(show&&isMatch(Z)));
+  c.classList.toggle("miss",!!(show&&!isMatch(Z)));
+}
+function paintAll(){for(var Z=1;Z<=ZMAX;Z++)paintCell(Z);}
+
+// ---------- calcolo (in un worker, a rate) ----------
+var worker=null, useMain=false, running=false, current=null, queue=[], wake=null;
+function makeWorker(){
+  if(worker||useMain)return;
+  try{
+    var src=$("engine").textContent+"\nonmessage=function(e){var r=computeAtom(e.data.Z);postMessage(r);};";
+    worker=new Worker(URL.createObjectURL(new Blob([src],{type:"text/javascript"})));
+    worker.onmessage=function(ev){done(ev.data);};
+    worker.onerror=function(){worker=null;useMain=true;if(current){var z=current.Z;current=null;queue.unshift(z);step();}};
+  }catch(e){worker=null;useMain=true;}
+}
+function compact(r){
+  return {Z:r.Z,ok:r.ok,E:r.E,Ecat:r.Ecat,IE:r.IE,map:r.map,unpaired:r.unpaired,tries:r.tries,ms:r.ms,
+    orbs:(r.orbs||[]).map(function(o){return [o.n,o.l,o.s,o.occ,+o.e.toFixed(6),+o.r.toFixed(4)];}),
+    dens:(r.dens||[]).filter(function(_,i){return i%2===0;})};
+}
+function nextMissing(){for(var Z=1;Z<=ZMAX;Z++)if(!results[Z])return Z;return null;}
+function step(){
+  if(current)return;
+  var Z=queue.length?queue.shift():(running?nextMissing():null);
+  while(Z&&results[Z]&&queue.length)Z=queue.shift();
+  if(!Z||results[Z]){running=false;releaseWake();ui();return;}
+  current={Z:Z,t0:Date.now()};paintCell(Z);ui();
+  makeWorker();
+  if(worker)worker.postMessage({Z:Z});
+  else setTimeout(function(){var r;try{r=computeAtom(Z);}catch(e){r={Z:Z,ok:false};}done(r);},40);
+}
+function done(r){
+  var Z=current?current.Z:r.Z;current=null;
+  if(r&&r.ok){results[Z]=compact(r);save();}
+  else{results[Z]=null;delete results[Z];setStatus("Il calcolo di Z "+Z+" non è andato a buon fine.");}
+  paintCell(Z);
+  if(selected===Z||selected===null){selected=Z;renderDetail();}
+  drawIE();renderBusta();step();
+}
+function start(){running=true;requestWake();step();ui();}
+function pause(){
+  running=false;queue=[];
+  if(current){if(worker){worker.terminate();worker=null;}var z=current.Z;current=null;paintCell(z);}
+  releaseWake();ui();
+}
+function requestWake(){try{if(navigator.wakeLock&&!wake)navigator.wakeLock.request("screen").then(function(w){wake=w;}).catch(function(){});}catch(e){}}
+function releaseWake(){try{if(wake){wake.release();wake=null;}}catch(e){}}
+document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible"&&running){wake=null;requestWake();}});
+$("runAll").addEventListener("click",function(){running?pause():start();});
+
+function count(){var n=0;for(var Z=1;Z<=ZMAX;Z++)if(results[Z])n++;return n;}
+function setStatus(t){$("status").textContent=t;}
+function ui(){
+  var n=count();
+  $("bar").style.width=(100*n/ZMAX)+"%";
+  var b=$("runAll");
+  if(running){b.textContent="Metti in pausa";b.classList.remove("primary");}
+  else{b.textContent=n===0?"Calcola tutta la tavola":n<ZMAX?"Riprendi il calcolo":"Tavola completa";b.classList.add("primary");b.disabled=n>=ZMAX;}
+  if(current){
+    // stima del tempo: gli atomi pesanti costano di piu', si scala sul tempo reale degli atomi gia' fatti
+    var w=function(z){return 500+70*z;},spent=0,model=0,left=0;
+    for(var Z=1;Z<=ZMAX;Z++){if(results[Z]){spent+=results[Z].ms;model+=w(Z);}else left+=w(Z);}
+    var eta=model>0?Math.round(spent/model*left/60000):null;
+    var etaTxt=eta===null?"":eta<=1?", circa un minuto alla fine.":", circa "+eta+" minuti alla fine.";
+    setStatus("Sto calcolando "+NOMI[current.Z-1]+" (Z "+current.Z+"). "+n+" su "+ZMAX+" fatti"+(running&&etaTxt?etaTxt:"."));
+  } else setStatus(n===0?"Nessun elemento calcolato. Tocca un elemento per calcolarlo, o calcola tutta la tavola: ci vogliono alcuni minuti e puoi interrompere quando vuoi.":n+" su "+ZMAX+" elementi calcolati.");
+}
+
+// ---------- scheda elemento ----------
+var fullCfg=false, allLevels=false;
+function pick(Z,fromTap){
+  selected=Z;paintAll();
+  if(!results[Z]&&!(current&&current.Z===Z)){queue.unshift(Z);step();}
+  renderDetail();
+  if(fromTap&&window.innerWidth<700)$("detail").scrollIntoView({behavior:"smooth",block:"start"});
+}
+function levelsOf(r){
+  var g={};
+  r.orbs.forEach(function(o){var k=o[0]+LET[o[1]];g[k]=g[k]||{k:k,up:0,dn:0,eu:null,ed:null,r:0};
+    if(o[2]===0){g[k].up=o[3];g[k].eu=o[4];}else{g[k].dn=o[3];g[k].ed=o[4];} g[k].r=Math.max(g[k].r,o[5]);});
+  return Object.keys(g).map(function(k){var x=g[k];x.top=Math.max(x.eu===null?-1e9:x.eu,x.ed===null?-1e9:x.ed);return x;})
+    .sort(function(a,b){return b.top-a.top;});
+}
+function renderDetail(){
+  var el=$("detail"),Z=selected;
+  if(!Z){el.innerHTML='<p class="empty">Tocca un elemento della tavola per vedere che cosa ha scoperto il motore.</p>';return;}
+  var r=results[Z],h='<div class="el-head"><div class="el-sym">'+SYM[Z-1]+'</div><div><div class="el-name">'+cap(NOMI[Z-1])+'</div><div class="muted small">Z = '+Z+', cioè '+Z+' protoni</div></div>'+
+    '<div class="el-nav"><button id="prevEl" aria-label="Elemento precedente"'+(Z<=1?" disabled":"")+'>‹</button><button id="nextEl" aria-label="Elemento successivo"'+(Z>=ZMAX?" disabled":"")+'>›</button></div></div>';
+  if(!r){
+    h+=(current&&current.Z===Z)?'<p>Sto calcolando questo atomo: di solito servono pochi secondi.</p>':'<p class="empty">Non ancora calcolato. È in coda.</p>';
+    el.innerHTML=h;bindNav();return;
+  }
+  var t=totalsFromMap(r.map);
+  h+='<h3 class="muted" style="font-weight:400">Configurazione scoperta</h3><div class="config'+(fullCfg?" full":"")+'">'+cfgText(t,fullCfg)+'</div>'+
+     '<button class="linkish" id="toggleCfg">'+(fullCfg?"Mostra in forma breve":"Mostra tutti i gusci")+'</button>';
+  h+='<div class="facts">'+
+     '<div class="fact"><b>'+fmt(r.IE,2)+' eV</b><span>energia per strappare un elettrone</span></div>'+
+     '<div class="fact"><b>'+r.unpaired+'</b><span>elettroni spaiati</span></div>'+
+     '<div class="fact"><b>'+r.tries+'</b><span>disposizioni provate</span></div>'+
+     '<div class="fact"><b>'+fmt(r.ms/1000,1)+' s</b><span>tempo di calcolo</span></div></div>';
+  if(bustaOpen&&MEAS[Z]){
+    var m=MEAS[Z],same=sameTotals(t,m.cfg),d=r.IE-m.ie;
+    h+='<div class="compare'+(same?"":" bad")+'"><div class="verdict">'+(same?"Stessa configurazione misurata":"Configurazione diversa da quella misurata")+'</div>'+
+       '<p class="small">Misurata: <span style="font-family:var(--serif);font-size:1.05rem">'+cfgText(m.cfg,false)+'</span><br>Energia di ionizzazione misurata: '+fmt(m.ie,2)+' eV. Differenza: '+(d>=0?"+":"−")+fmt(Math.abs(d),2)+' eV ('+fmt(Math.abs(d)/m.ie*100,0)+'%).</p></div>';
+  }
+  h+='<div class="sub"><h3>Dove stanno gli elettroni</h3><canvas id="densChart" height="170" aria-label="Distribuzione degli elettroni attorno al nucleo"></canvas>'+
+     '<p class="muted small">Elettroni in funzione della distanza dal nucleo, in scala logaritmica. Ogni gobba è un guscio: nessuno ha detto al motore che esistono.</p></div>';
+  var lv=levelsOf(r),show=allLevels?lv:lv.slice(0,6);
+  h+='<div class="sub"><h3>Livelli occupati, dal più esterno</h3><table class="levels"><tbody>'+show.map(function(x){
+      var e=x.eu!==null&&x.ed!==null?fmt(x.eu*27.2114,1)+" / "+fmt(x.ed*27.2114,1):fmt((x.eu!==null?x.eu:x.ed)*27.2114,1);
+      return '<tr><td>'+x.k+'</td><td class="arrows">'+"↑".repeat(x.up)+' <span class="dn">'+"↓".repeat(x.dn)+'</span></td><td>'+e+' eV</td></tr>';}).join("")+
+     '</tbody></table>'+(lv.length>6?'<button class="linkish" id="toggleLv" style="margin-top:.4rem">'+(allLevels?"Mostra solo i più esterni":"Mostra tutti i "+lv.length+" livelli")+'</button>':'')+
+     '<p class="muted small">Le frecce sono gli elettroni con spin su e giù. Dove ci sono due valori, sono le energie per i due spin.</p></div>';
+  el.innerHTML=h;bindNav();
+  $("toggleCfg").onclick=function(){fullCfg=!fullCfg;renderDetail();};
+  if($("toggleLv"))$("toggleLv").onclick=function(){allLevels=!allLevels;renderDetail();};
+  drawDensity(r);
+}
+function bindNav(){
+  var p=$("prevEl"),n=$("nextEl");
+  if(p)p.onclick=function(){if(selected>1)pick(selected-1,false);};
+  if(n)n.onclick=function(){if(selected<ZMAX)pick(selected+1,false);};
+}
+
+// ---------- grafici ----------
+function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+function setup(cv){
+  var dpr=window.devicePixelRatio||1,w=cv.clientWidth,h=+cv.getAttribute("height");
+  cv.width=w*dpr;cv.height=h*dpr;cv.style.height=h+"px";var c=cv.getContext("2d");c.setTransform(dpr,0,0,dpr,0,0);return {c:c,w:w,h:h};
+}
+function drawDensity(r){
+  var cv=$("densChart");if(!cv)return;var s=setup(cv),c=s.c,W=s.w,H=s.h,L=8,R=8,T=10,B=24;
+  var BOHR=0.529177,x0=-2.5,x1=1.2;
+  var pts=r.dens.map(function(p){return [Math.log10(p[0]*BOHR),p[1]*p[0]];}).filter(function(p){return p[0]>=x0&&p[0]<=x1;});
+  var ymax=0;pts.forEach(function(p){if(p[1]>ymax)ymax=p[1];});
+  function X(x){return L+(x-x0)/(x1-x0)*(W-L-R);} function Y(y){return H-B-(y/ymax)*(H-B-T);}
+  c.strokeStyle=css("--line");c.fillStyle=css("--faint");c.font="11px "+css("--sans");c.lineWidth=1;
+  [-2,-1,0,1].forEach(function(e){var x=X(e);c.beginPath();c.moveTo(x,T);c.lineTo(x,H-B);c.stroke();
+    var lab=e===-2?"0,01 Å":e===-1?"0,1 Å":e===0?"1 Å":"10 Å";c.textAlign="center";c.fillText(lab,x,H-6);});
+  c.beginPath();c.moveTo(X(pts[0][0]),Y(0));pts.forEach(function(p){c.lineTo(X(p[0]),Y(p[1]));});c.lineTo(X(pts[pts.length-1][0]),Y(0));c.closePath();
+  c.fillStyle=css("--na-soft");c.fill();
+  c.beginPath();pts.forEach(function(p,i){i?c.lineTo(X(p[0]),Y(p[1])):c.moveTo(X(p[0]),Y(p[1]));});c.strokeStyle=css("--na");c.lineWidth=2;c.stroke();
+}
+var ieGeom=null;
+function drawIE(){
+  var cv=$("ieChart"),s=setup(cv),c=s.c,W=s.w,H=s.h,L=30,R=8,T=10,B=24,ymax=26;
+  function X(z){return L+(z-1)/(ZMAX-1)*(W-L-R);} function Y(v){return H-B-v/ymax*(H-B-T);}
+  ieGeom={X:X,L:L,R:R,W:W};
+  c.font="11px "+css("--sans");c.lineWidth=1;
+  [0,5,10,15,20,25].forEach(function(v){c.strokeStyle=css("--line");c.beginPath();c.moveTo(L,Y(v));c.lineTo(W-R,Y(v));c.stroke();c.fillStyle=css("--faint");c.textAlign="right";c.fillText(v,L-6,Y(v)+4);});
+  [1,20,40,60,80,103].forEach(function(z){c.textAlign="center";c.fillText("Z "+z,X(z),H-6);});
+  c.save();c.textAlign="left";c.fillText("eV",L+4,T+10);c.restore();
+  if(selected){c.strokeStyle=css("--muted");c.setLineDash([3,3]);c.beginPath();c.moveTo(X(selected),T);c.lineTo(X(selected),H-B);c.stroke();c.setLineDash([]);}
+  function series(get,color,w,dots){
+    c.strokeStyle=color;c.lineWidth=w;c.beginPath();var on=false;
+    for(var z=1;z<=ZMAX;z++){var v=get(z);if(v==null){on=false;continue;} if(!on){c.moveTo(X(z),Y(v));on=true;}else c.lineTo(X(z),Y(v));}
+    c.stroke();
+    if(dots){c.fillStyle=color;for(z=1;z<=ZMAX;z++){v=get(z);if(v!=null){c.beginPath();c.arc(X(z),Y(v),2.2,0,7);c.fill();}}}
+  }
+  if(bustaOpen)series(function(z){return MEAS[z]?MEAS[z].ie:null;},css("--cu"),1.6,false);
+  series(function(z){return results[z]?results[z].IE:null;},css("--na"),1.4,true);
+}
+$("ieChart").addEventListener("click",function(ev){
+  if(!ieGeom)return;var rect=this.getBoundingClientRect(),x=ev.clientX-rect.left;
+  var z=Math.round(1+(x-ieGeom.L)/(ieGeom.W-ieGeom.L-ieGeom.R)*(ZMAX-1));z=Math.max(1,Math.min(ZMAX,z));pick(z,false);drawIE();
+});
+
+// ---------- busta sigillata ----------
+var confirmOpen=false;
+function stats(z0,z1){
+  var n=0,ok=0,err=0;for(var z=z0;z<=z1;z++){if(!results[z]||!MEAS[z])continue;n++;if(isMatch(z))ok++;err+=Math.abs(results[z].IE-MEAS[z].ie);}
+  return {n:n,ok:ok,mae:n?err/n:null};
+}
+function renderBusta(){
+  var el=$("busta");
+  if(!bustaOpen){
+    el.innerHTML='<div class="seal"><div class="seal-head"><div class="wax" aria-hidden="true">B</div><h2 style="margin:0">Busta sigillata</h2></div>'+
+      '<p>Dentro ci sono le configurazioni e le energie di ionizzazione misurate in laboratorio (NIST) per gli elementi da 1 a 103. Il motore non le ha mai viste.</p>'+
+      '<p class="muted small">Aprila quando vuoi confrontare: puoi farlo anche a tavola incompleta.</p>'+
+      (confirmOpen?'<div class="confirm"><p>Una volta aperta, su questo telefono resta aperta: i valori misurati compariranno accanto a quelli calcolati.</p><div class="row"><button class="btn primary" id="openYes">Apri la busta</button><button class="btn ghost" id="openNo">Annulla</button></div></div>'
+        :'<button class="btn" id="openB" style="margin-top:.6rem">Apri la busta</button>')+'</div>';
+    if($("openB"))$("openB").onclick=function(){confirmOpen=true;renderBusta();};
+    if($("openYes"))$("openYes").onclick=function(){bustaOpen=true;try{localStorage.setItem(KEYB,"1");}catch(e){}renderBusta();paintAll();renderDetail();drawIE();legend();};
+    if($("openNo"))$("openNo").onclick=function(){confirmOpen=false;renderBusta();};
+    return;
+  }
+  var all=stats(1,ZMAX);
+  var h='<h2>La busta è aperta</h2>';
+  if(!all.n){el.innerHTML=h+'<p class="muted">Calcola qualche elemento per vedere il confronto.</p>';return;}
+  h+='<div class="score"><div class="fact"><b>'+all.ok+' su '+all.n+'</b><span>configurazioni uguali a quelle misurate</span></div>'+
+     '<div class="fact"><b>'+fmt(all.mae,2)+' eV</b><span>errore medio sull\'energia di ionizzazione</span></div></div>';
+  var rows=[["Periodi 1–4",1,36],["Periodo 5",37,54],["Periodo 6",55,86],["Periodo 7",87,103]];
+  h+='<table class="periods"><thead><tr><th>Zona</th><th>Config. uguali</th><th>Errore medio</th></tr></thead><tbody>'+rows.map(function(r){
+    var s=stats(r[1],r[2]);return '<tr><td>'+r[0]+'</td><td>'+(s.n?s.ok+" su "+s.n:"–")+'</td><td>'+(s.n?fmt(s.mae,2)+" eV":"–")+'</td></tr>';}).join("")+'</tbody></table>';
+  if(count()<ZMAX){el.innerHTML=h+'<p class="muted small">Il commento sui risultati compare quando la tavola è tutta calcolata.</p>';return;}
+  h+='<h3>Cosa ci dice il confronto</h3>'+
+     '<p>Senza saperne nulla, il motore ritrova i gusci, la periodicità della tavola e molte anomalie vere, come cromo e rame che preferiscono un solo elettrone nel livello 4s.</p>'+
+     '<p>Dove sbaglia, sbaglia in modo sistematico. Nei metalli di transizione tende a mettere un elettrone in più nei livelli d: è un difetto noto dell\'approssimazione di scambio-correlazione usata. Negli elementi pesanti l\'errore cresce perché manca la relatività: vicino a nuclei con tanti protoni gli elettroni interni sono velocissimi, e questo cambia l\'energia dei livelli esterni.</p>'+
+     '<p class="muted small">È il prossimo passo: aggiungere la relatività e vedere se gli errori dei periodi 6 e 7 si riducono.</p>';
+  el.innerHTML=h;
+}
+function legend(){
+  $("legend").innerHTML='<span><i style="background:var(--na)"></i>calcolata dal motore</span>'+(bustaOpen?'<span><i style="background:var(--cu)"></i>misurata (busta)</span>':'');
+}
+
+// ---------- azzeramento ----------
+$("reset").onclick=function(){$("resetConfirm").hidden=false;$("resetConfirm").scrollIntoView({behavior:"smooth",block:"center"});};
+$("resetNo").onclick=function(){$("resetConfirm").hidden=true;};
+$("resetYes").onclick=function(){pause();results={};bustaOpen=false;confirmOpen=false;save();try{localStorage.removeItem(KEYB);}catch(e){}
+  $("resetConfirm").hidden=true;selected=null;paintAll();renderDetail();renderBusta();drawIE();legend();ui();};
+
+window.addEventListener("resize",function(){drawIE();if(selected&&results[selected])drawDensity(results[selected]);});
+
+// ---------- avvio ----------
+(function init(){
+  var last=null;for(var Z=1;Z<=ZMAX;Z++)if(results[Z])last=Z;
+  selected=last;paintAll();renderDetail();renderBusta();legend();ui();
+  var go=function(){drawIE();if(selected&&results[selected])drawDensity(results[selected]);};
+  if(document.fonts&&document.fonts.ready)document.fonts.ready.then(go);else go();
+  if("serviceWorker" in navigator&&location.protocol==="https:"){try{navigator.serviceWorker.register("sw.js").catch(function(){});}catch(e){}}
+})();
+})();
+</script>
+</body>
+</html>
