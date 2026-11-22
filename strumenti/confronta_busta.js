@@ -5,9 +5,13 @@ CORES.Kr = CORES.Ar + ' 3d10 4s2 4p6'; CORES.Xe = CORES.Kr + ' 4d10 5s2 5p6'; CO
 function expand(c){ return c.replace(/\((\w+)\)/, (m,k)=>CORES[k]).trim().split(/\s+/).reduce((t,tok)=>{const m=tok.match(/^(\d)([spdf])(\d*)$/); t[m[1]+m[2]]=(t[m[1]+m[2]]||0)+(m[3]?+m[3]:1); return t;},{}); }
 function same(a,b){ const k=new Set([...Object.keys(a),...Object.keys(b)]); for(const x of k) if((a[x]||0)!==(b[x]||0)) return false; return true; }
 const [z1,z2]=[+process.argv[2]||1,+process.argv[3]||36];
+// opzioni: --xc lsda|pbe  --norel
+const XC=(process.argv.indexOf('--xc')>0)?process.argv[process.argv.indexOf('--xc')+1]:'pbe';
+const REL=process.argv.indexOf('--norel')<0;
+console.log('scambio-correlazione:',XC,' relativita:',REL?'si':'no');
 let ok=0,tot=0,err=[],T=0;
 for (let Z=z1; Z<=z2; Z++){
-  const r=E.computeAtom(Z); T+=r.ms;
+  const r=E.computeAtom(Z,{xc:XC,rel:REL}); T+=r.ms;
   const b=BUSTA[Z-1];
   if(!r.ok){console.log(Z,'FAIL');continue;}
   const match=same(E.shellTotals(r.map),expand(b[2]));
