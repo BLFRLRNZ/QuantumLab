@@ -150,6 +150,7 @@ footer{margin-top:2rem;color:var(--faint);font-size:.82rem;display:flex;justify-
     <li><b>Scambio e correlazione:</b> approssimazione PBE, che tiene conto di come la densità degli elettroni cambia da punto a punto. È costruita solo da vincoli fisici esatti; la sua base (LSDA) viene da simulazioni quantistiche del gas di elettroni, non da misure su atomi.</li>
     <li><b>Scambio esatto:</b> un quarto dello scambio PBE è sostituito da quello esatto (ibrido PBE0), in cui nessun elettrone interagisce con se stesso. Il quarto viene da un argomento teorico, non da un adattamento ai dati.</li>
     <li><b>Livelli singoli:</b> il calcolo sferico dà l'energia media di una configurazione, mentre la misura registra il livello più basso. Dentro i gusci aperti il motore risolve quindi esattamente la repulsione tra gli elettroni e l'accoppiamento spin-orbita, usando gli orbitali che ha calcolato da sé.</li>
+    <li><b>Correlazione della coppia s²:</b> due elettroni nello stesso livello s tendono a mescolarsi con il livello p vicino. Il motore calcola questo mescolamento dai propri orbitali e lo aggiunge nella parte di scambio sostituita da quello esatto.</li>
     <li><b>Relatività:</b> vicino a nuclei con molti protoni gli elettroni vanno così veloci che la loro massa cresce. Il motore usa l'equazione scalare-relativistica, con un'unica costante in più: la velocità della luce.</li>
     <li><b>Come cerca:</b> lascia che gli elettroni occupino i livelli più bassi, poi prova a spostarne uno alla volta e tiene la disposizione con l'energia più bassa. L'energia di ionizzazione è la differenza di energia tra lo ione e l'atomo neutro.</li>
     <li><b>Cosa non sa:</b> nessuna tabella di configurazioni, nessuna regola di riempimento, nessun valore misurato. Lo scambio esatto è calcolato sugli orbitali PBE, non ancora in modo autoconsistente.</li>
@@ -158,7 +159,7 @@ footer{margin-top:2rem;color:var(--faint);font-size:.82rem;display:flex;justify-
 </section>
 
 <footer>
-  <span>Motore 0.4: relatività scalare, PBE0, multipletti e spin-orbita, griglia logaritmica.</span>
+  <span>Motore 0.5: relatività scalare, PBE0, correlazione della coppia s², multipletti e spin-orbita.</span>
   <button class="linkish" id="reset">Azzera i calcoli</button>
 </footer>
 <div id="resetConfirm" class="confirm" hidden>
@@ -178,10 +179,10 @@ footer{margin-top:2rem;color:var(--faint);font-size:.82rem;display:flex;justify-
 "use strict";
 var SYM="H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga Ge As Se Br Kr Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs Ba La Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa U Np Pu Am Cm Bk Cf Es Fm Md No Lr Rf Db Sg Bh Hs Mt Ds Rg Cn Nh Fl Mc Lv Ts Og".split(" ");
 var NOMI="idrogeno elio litio berillio boro carbonio azoto ossigeno fluoro neon sodio magnesio alluminio silicio fosforo zolfo cloro argon potassio calcio scandio titanio vanadio cromo manganese ferro cobalto nichel rame zinco gallio germanio arsenico selenio bromo kripton rubidio stronzio ittrio zirconio niobio molibdeno tecnezio rutenio rodio palladio argento cadmio indio stagno antimonio tellurio iodio xeno cesio bario lantanio cerio praseodimio neodimio promezio samario europio gadolinio terbio disprosio olmio erbio tulio itterbio lutezio afnio tantalio tungsteno renio osmio iridio platino oro mercurio tallio piombo bismuto polonio astato radon francio radio attinio torio protoattinio uranio nettunio plutonio americio curio berkelio californio einsteinio fermio mendelevio nobelio laurenzio rutherfordio dubnio seaborgio bohrio hassio meitnerio darmstadtio roentgenio copernicio nihonio flerovio moscovio livermorio tennesso oganesson".split(" ");
-var ZMAX=103, KEY="lab-vergine-l0-v4", KEYB="lab-vergine-l0-busta";
+var ZMAX=103, KEY="lab-vergine-l0-v5", KEYB="lab-vergine-l0-busta", INCERTO=0.2;
 // risultati delle versioni precedenti del motore, per confronto
-var HIST=[["0.1",69,0.58],["0.2",87,0.21],["0.3",89,0.16]];
-var PREV={all:[89,103,0.16],zone:[[31,36,0.19],[16,18,0.19],[28,32,0.13],[14,17,0.10]]};
+var HIST=[["0.1",69,0.58],["0.2",87,0.21],["0.3",89,0.16],["0.4",94,0.15]];
+var PREV={all:[94,103,0.15],zone:[[35,36,0.14],[16,18,0.12],[29,32,0.17],[14,17,0.18]]};
 var LET=["s","p","d","f"];
 var SUPD={"0":"⁰","1":"¹","2":"²","3":"³","4":"⁴","5":"⁵","6":"⁶","7":"⁷","8":"⁸","9":"⁹"};
 function sup(n){return String(n).split("").map(function(c){return SUPD[c];}).join("");}
@@ -268,7 +269,7 @@ function makeWorker(){
   }catch(e){worker=null;useMain=true;}
 }
 function compact(r){
-  return {Z:r.Z,ok:r.ok,E:r.E,Ecat:r.Ecat,IE:r.IE,map:r.map,unpaired:r.unpaired,tries:r.tries,ms:r.ms,corrN:r.corrN||0,corrC:r.corrC||0,
+  return {Z:r.Z,ok:r.ok,E:r.E,Ecat:r.Ecat,IE:r.IE,map:r.map,unpaired:r.unpaired,tries:r.tries,ms:r.ms,corrN:r.corrN||0,corrC:r.corrC||0,margin:(r.margin===null||r.margin===undefined)?null:r.margin,
     orbs:(r.orbs||[]).map(function(o){return [o.n,o.l,o.s,o.occ,+o.e.toFixed(6),+o.r.toFixed(4)];}),
     dens:(r.dens||[]).filter(function(_,i){return i%2===0;})};
 }
@@ -350,7 +351,7 @@ function renderDetail(){
   h+='<div class="facts">'+
      '<div class="fact"><b>'+fmt(r.IE,2)+' eV</b><span>energia per strappare un elettrone</span></div>'+
      '<div class="fact"><b>'+r.unpaired+'</b><span>elettroni spaiati</span></div>'+
-     '<div class="fact"><b>'+r.tries+'</b><span>disposizioni provate</span></div>'+
+     '<div class="fact"><b>'+(r.margin==null?'–':fmt(r.margin,2)+' eV')+'</b><span>'+(r.margin!=null&&r.margin<INCERTO?'margine sulla seconda configurazione: verdetto incerto':'margine sulla seconda configurazione')+'</span></div>'+
      '<div class="fact"><b>'+fmt(r.ms/1000,1)+' s</b><span>tempo di calcolo</span></div></div>'+
      ((Math.abs(r.corrN||0)>0.005||Math.abs(r.corrC||0)>0.005)?'<p class="muted small">Livello più basso rispetto alla media della configurazione (multipletti e spin-orbita): '+fmt(r.corrN||0,2)+' eV per l\'atomo, '+fmt(r.corrC||0,2)+' eV per lo ione.</p>':'');
   if(bustaOpen&&MEAS[Z]){
@@ -446,17 +447,19 @@ function renderBusta(){
   if(!all.n){el.innerHTML=h+'<p class="muted">Calcola qualche elemento per vedere il confronto.</p>';return;}
   h+='<div class="score"><div class="fact"><b>'+all.ok+' su '+all.n+'</b><span>configurazioni uguali a quelle misurate</span></div>'+
      '<div class="fact"><b>'+fmt(all.mae,2)+' eV</b><span>errore medio sull\'energia di ionizzazione</span></div></div>'+
-     '<p class="muted small">Versioni precedenti del motore: '+HIST.map(function(v){return v[0]+': '+v[1]+' su 103 e '+fmt(v[2],2)+' eV';}).join('; ')+'. Nella tabella, "prima" è la versione 0.3.</p>';
+     '<p class="muted small">Versioni precedenti del motore: '+HIST.map(function(v){return v[0]+': '+v[1]+' su 103 e '+fmt(v[2],2)+' eV';}).join('; ')+'. Nella tabella, "prima" è la versione 0.4.</p>';
+  var miss=0,missInc=0,okInc=0,ok=0;for(var zz=1;zz<=ZMAX;zz++){if(!results[zz]||!MEAS[zz])continue;var inc=results[zz].margin!=null&&results[zz].margin<INCERTO;if(isMatch(zz)){ok++;if(inc)okInc++;}else{miss++;if(inc)missInc++;}}
+  if(miss)h+='<p class="small">Delle '+miss+' configurazioni sbagliate, '+missInc+' il motore le aveva già segnalate come incerte (margine sotto '+fmt(INCERTO,1)+' eV). Tra le '+ok+' giuste, le incerte sono '+okInc+'.</p>';
   var rows=[["Periodi 1–4",1,36],["Periodo 5",37,54],["Periodo 6",55,86],["Periodo 7",87,103]];
   h+='<table class="periods"><thead><tr><th>Zona</th><th>Config. uguali</th><th>Errore medio</th></tr></thead><tbody>'+rows.map(function(r,k){
     var s=stats(r[1],r[2]),p=PREV.zone[k];
     return '<tr><td>'+r[0]+'</td><td>'+(s.n?s.ok+" su "+s.n:"–")+'<br><span class="muted small">prima '+p[0]+' su '+p[1]+'</span></td><td>'+(s.n?fmt(s.mae,2)+" eV":"–")+'<br><span class="muted small">prima '+fmt(p[2],2)+' eV</span></td></tr>';}).join("")+'</tbody></table>';
   if(count()<ZMAX){el.innerHTML=h+'<p class="muted small">Il commento sui risultati compare quando la tavola è tutta calcolata.</p>';return;}
   h+='<h3>Cosa ci dice il confronto</h3>'+
-     '<p>Senza saperne nulla, il motore ritrova i gusci, la periodicità della tavola e molte anomalie vere: cromo e rame con un solo elettrone nel livello 4s, palladio senza elettroni 5s, platino e oro con un solo elettrone 6s.</p>'+
-     '<p>Ogni legge aggiunta ha tolto un tipo di errore. La relatività ha sistemato gli elementi pesanti: nel periodo 7 le configurazioni giuste sono passate da 3 a 14 su 17. Spin-orbita e multipletti hanno sistemato gli elementi 6p come bismuto, radon e tallio. Lo scambio esatto ha sistemato quasi tutti i metalli di transizione: titanio, ferro, cobalto e nichel ora hanno la configurazione giusta, e l\'errore più grande sull\'energia di ionizzazione è sceso da 0,65 a 0,44 eV.</p>'+
-     '<p>Restano sbagliati vanadio, zirconio, tecnezio e tungsteno, dove le due configurazioni in gara sono vicine in energia; lantanio, cerio, uranio e curio, dove competono livelli f e d; e il laurenzio, dove servirebbe l\'equazione di Dirac completa. Negli elementi pesanti lo scambio esatto peggiora un po\' le energie: per ora è calcolato sugli orbitali PBE, non in modo autoconsistente.</p>'+
-     '<p class="muted small">Prossimi passi possibili: rendere autoconsistente lo scambio esatto, oppure passare al Livello 1, le molecole.</p>';
+     '<p>Senza saperne nulla, il motore ritrova i gusci, la periodicità della tavola e molte anomalie vere: cromo e rame con un solo elettrone nel livello 4s, palladio senza elettroni 5s, oro con un solo elettrone 6s.</p>'+
+     '<p>Ogni legge aggiunta ha tolto un tipo di errore. La relatività ha sistemato gli elementi pesanti, spin-orbita e multipletti gli elementi 6p, lo scambio esatto quasi tutti i metalli di transizione, la correlazione della coppia s² zirconio, tecnezio, uranio e le energie di berillio e manganese.</p>'+
+     '<p>Restano sbagliati vanadio, lantanio, cerio, tungsteno e platino, dove due configurazioni sono quasi alla pari: il motore li aveva già segnalati come incerti. Sbaglia invece con sicurezza il curio (livelli 5f contro 6d) e il laurenzio, dove servirebbe l\'equazione di Dirac completa.</p>'+
+     '<p class="muted small">Prossimi passi possibili: equazione di Dirac completa, oppure il Livello 1, le molecole.</p>';
   el.innerHTML=h;
 }
 function legend(){

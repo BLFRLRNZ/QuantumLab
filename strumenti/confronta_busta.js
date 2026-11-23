@@ -9,17 +9,18 @@ const [z1,z2]=[+process.argv[2]||1,+process.argv[3]||36];
 const XC=(process.argv.indexOf('--xc')>0)?process.argv[process.argv.indexOf('--xc')+1]:'pbe';
 const REL=process.argv.indexOf('--norel')<0;
 const HYB=process.argv.indexOf('--nohybrid')<0;
+const PAIR=process.argv.indexOf('--nopair')<0;
 const LV=process.argv.indexOf('--nolevels')>0?false:(process.argv.indexOf('--soonly')>0?'so':true);
-console.log('scambio-correlazione:',XC,' relativita:',REL?'si':'no',' livelli:',LV,' scambio esatto:',HYB);
+console.log('scambio-correlazione:',XC,' relativita:',REL?'si':'no',' livelli:',LV,' scambio esatto:',HYB,' coppia s2:',PAIR);
 let ok=0,tot=0,err=[],T=0;
 for (let Z=z1; Z<=z2; Z++){
-  const r=E.computeAtom(Z,{xc:XC,rel:REL,levels:LV,hybrid:HYB}); T+=r.ms;
+  const r=E.computeAtom(Z,{xc:XC,rel:REL,levels:LV,hybrid:HYB,pair:PAIR}); T+=r.ms;
   const b=BUSTA[Z-1];
   if(!r.ok){console.log(Z,'FAIL');continue;}
   const match=same(E.shellTotals(r.map),expand(b[2]));
   tot++; if(match) ok++;
   err.push(r.IE-b[3]);
-  console.log(String(Z).padStart(3),b[1].padEnd(3),(match?'OK ':'-- ')+r.configPlain.padEnd(38),'mis:',b[2].padEnd(22),'IE',r.IE.toFixed(3),'mis',b[3].toFixed(3),'d',(r.IE-b[3]).toFixed(2),'spaiati',r.unpaired,'prove',r.tries,r.ms+'ms');
+  console.log(String(Z).padStart(3),b[1].padEnd(3),(match?'OK ':'-- ')+r.configPlain.padEnd(38),'mis:',b[2].padEnd(22),'IE',r.IE.toFixed(3),'mis',b[3].toFixed(3),'d',(r.IE-b[3]).toFixed(2),'spaiati',r.unpaired,'prove',r.tries,'margine',r.margin===null||r.margin===undefined?'-':r.margin.toFixed(2),r.ms+'ms');
 }
 const mae=err.reduce((a,b)=>a+Math.abs(b),0)/err.length;
 console.log('config ok',ok+'/'+tot,'MAE IE',mae.toFixed(3),'eV','tempo tot',(T/1000).toFixed(1)+'s');

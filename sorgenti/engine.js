@@ -1,4 +1,4 @@
-// MOTORE — Livello 0, versione 0.4. Unico dato in ingresso: Z (numero di protoni).
+// MOTORE — Livello 0, versione 0.5. Unico dato in ingresso: Z (numero di protoni).
 // Leggi impostate: equazione di Schrodinger per gli elettroni (Kohn-Sham, unita' atomiche),
 // attrazione di Coulomb del nucleo, repulsione di Coulomb tra elettroni (Hartree),
 // principio di Pauli (max 2l+1 elettroni per sottolivello e spin).
@@ -10,11 +10,13 @@
 // (interazione di configurazioni) con gli orbitali calcolati; si confronta il livello piu' basso.
 // Scambio esatto (0.4): ibrido PBE0, un quarto di scambio esatto al posto di quello PBE, valutato sugli
 // orbitali di ogni configurazione, con la media vera sulle disposizioni degli elettroni nei gusci aperti.
+// Correlazione della coppia ns^2 (0.5): mescolamento ns^2 np^k <-> np^(k+2) calcolato dagli orbitali,
+// nella stessa frazione (1/4) dello scambio esatto che la elimina. Margine sulla seconda configurazione.
 // Non contiene: tabelle di configurazioni, regola di Madelung, valori misurati.
 
 var HA2EV = 27.211386245988;
 var CLIGHT = 137.035999084;
-var CFG = { rel: true, xc: 'pbe', lv: 'full', hyb: true };
+var CFG = { rel: true, xc: 'pbe', lv: 'full', hyb: true, pair: true };
 // derivate del potenziale (prima e seconda rispetto a r), servono per i termini relativistici
 // Potenziale di riferimento per i termini relativistici: nucleo + repulsione media degli elettroni (Hartree).
 // Lo scambio-correlazione resta nell'equazione ma non nella massa relativistica: cosi' il rumore numerico
@@ -418,7 +420,7 @@ function scf(g, occs, Vstart, opts) {
     for (var s = 0; s < 2; s++) for (i = 0; i <= mesh; i++) { var d = Vout[s][i] - Vin[s][i]; res += d * d * (nu[i] + nd[i] + 1e-12) * w[i]; }
     res = Math.sqrt(res);
     if (it > 1 && Math.abs(E - Eold) < 1e-9 && res < 1e-6) {
-      if (POOL) poolAdd(occs, E, orbs, g.VHref);
+      if (POOL) poolAdd(occs, E, orbs, g.VHref, Vin);
       return { ok: true, E: E, V: Vin, orbs: orbs, it: it, nu: nu, nd: nd, Ts: Ts, Eext: Eext, EH: EH, Exc: Exc, VH: g.VHref };
     }
     Eold = E;
@@ -608,6 +610,7 @@ function searchConfig(g, startMap, Vstart, maxn, log, pre) {
   return best;
 }
 
+function shellTotalsKey(cs) { return cs; }
 var SUP = { '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹' };
 function shellTotals(map) {
   var t = {};
@@ -632,11 +635,11 @@ function configString(map, plain) {
 
 // raccolta delle disposizioni calcolate (per scegliere alla fine quella col livello piu' basso)
 var POOL = null;
-function poolAdd(occs, E, orbs, VH) {
+function poolAdd(occs, E, orbs, VH, V) {
   var map = {}; occs.forEach(function (o) { if (o.occ > 0) map[orbKey(o)] = o.occ; });
   var key = JSON.stringify(Object.keys(map).sort().map(function (k) { return k + ':' + map[k]; }));
-  for (var i = 0; i < POOL.length; i++) if (POOL[i].key === key) { if (E < POOL[i].E) { POOL[i].E = E; POOL[i].orbs = orbs; POOL[i].VH = VH; } return; }
-  POOL.push({ key: key, map: map, E: E, orbs: orbs, VH: VH });
+  for (var i = 0; i < POOL.length; i++) if (POOL[i].key === key) { if (E < POOL[i].E) { POOL[i].E = E; POOL[i].orbs = orbs; POOL[i].VH = VH; POOL[i].V = V; } return; }
+  POOL.push({ key: key, map: map, E: E, orbs: orbs, VH: VH, V: V });
   POOL.sort(function (a, b) { return a.E - b.E; });
   if (POOL.length > 10) POOL.length = 10;
 }
@@ -895,22 +898,129 @@ function hybridCorrection(g, entry) {
   return 0.25 * (exactExchange(g, entry.orbs) - pbeExchange(g, entry.orbs));
 }
 
+// ---------------------------------------------------------------------------------------------
+// CORRELAZIONE STATICA DELLA COPPIA ns^2 (dalla versione 0.5)
+// Una coppia di elettroni ns^2 si mescola con np^2 (stato 1S), perche' i livelli s e p sono vicini.
+// Le approssimazioni semilocali (PBE) includono questo effetto in modo implicito; la parte di scambio
+// sostituita da quello esatto (un quarto, in PBE0) lo perde. Qui si calcola dagli orbitali:
+//   Delta = E(np^2, 1S) - E(ns^2)   (calcolo autoconsistente di np^2 + correzione del multipletto 1S)
+//   W     = G^1(ns,np)/sqrt(3)      (accoppiamento tra le due configurazioni)
+//   E_ND  = Delta/2 - sqrt(Delta^2/4 + W^2)
+// e si restituisce la stessa frazione dello scambio esatto: 1/4 * E_ND.
+// CI tra due configurazioni nei gusci attivi (s e p dello stesso n): A = ns^2 np^k, B = np^(k+2).
+// Ogni configurazione entra con la propria energia calcolata; dentro, la repulsione esatta tra elettroni.
+function ciTwoConfig(shells, configs, Rk) {
+  var so = [];
+  shells.forEach(function (sh, si) { for (var m = -sh.l; m <= sh.l; m++) { so.push({ sh: si, l: sh.l, m: m, s: 1 }); so.push({ sh: si, l: sh.l, m: m, s: -1 }); } });
+  var NS = so.length, T = new Float64Array(NS * NS * NS * NS);
+  for (var p = 0; p < NS; p++) for (var q = 0; q < NS; q++) for (var r = 0; r < NS; r++) {
+    if (so[p].s !== so[r].s) continue;
+    for (var t = 0; t < NS; t++) {
+      if (so[q].s !== so[t].s || so[p].m + so[q].m !== so[r].m + so[t].m) continue;
+      var A = so[p], B = so[q], C = so[r], D = so[t], val = 0;
+      for (var k = Math.max(Math.abs(A.l - C.l), Math.abs(B.l - D.l)); k <= Math.min(A.l + C.l, B.l + D.l); k++) {
+        if ((A.l + C.l + k) % 2 || (B.l + D.l + k) % 2) continue;
+        var c1 = ckc(k, A.l, A.m, C.l, C.m); if (!c1) continue;
+        var c2 = ckc(k, D.l, D.m, B.l, B.m); if (!c2) continue;
+        val += c1 * c2 * Rk(A.sh, B.sh, C.sh, D.sh, k);
+      }
+      T[((p * NS + q) * NS + r) * NS + t] = val;
+    }
+  }
+  function V2(a, b, c, d) { return T[((a * NS + b) * NS + c) * NS + d]; }
+  function diagE(bits) { var occ = []; for (var i = 0; i < NS; i++) if (bits & (1 << i)) occ.push(i); var e = 0; for (var a = 0; a < occ.length; a++) for (var b = a + 1; b < occ.length; b++) e += V2(occ[a], occ[b], occ[a], occ[b]) - V2(occ[a], occ[b], occ[b], occ[a]); return e; }
+  function shellCount(bits, si, sp) { var c = 0; for (var i = 0; i < NS; i++) if ((bits & (1 << i)) && so[i].sh === si && (sp === undefined || so[i].s === sp)) c++; return c; }
+  var dets = [], cfgOf = [], refs = [];
+  configs.forEach(function (cf, ci) {
+    var all = [];
+    (function rec(si, bits) {
+      if (si === shells.length) { all.push(bits); return; }
+      var idx = []; for (var i = 0; i < NS; i++) if (so[i].sh === si) idx.push(i);
+      (function comb(start, left, b) { if (!left) { rec(si + 1, b); return; } for (var i = start; i <= idx.length - left; i++) comb(i + 1, left - 1, b | (1 << idx[i])); })(0, cf.N[si], bits);
+    })(0, 0);
+    var sum = 0, cnt = 0;
+    all.forEach(function (b) { var ok = true; for (var si = 0; si < shells.length; si++) if (shellCount(b, si, 1) !== cf.up[si] || shellCount(b, si, -1) !== cf.dn[si]) { ok = false; break; } if (ok) { sum += diagE(b); cnt++; } });
+    refs[ci] = cnt ? sum / cnt : 0;
+    var tot = cf.N.reduce(function (a, b) { return a + b; }, 0), t2 = tot % 2;
+    all.forEach(function (b) { var mm = 0; for (var i = 0; i < NS; i++) if (b & (1 << i)) mm += 2 * so[i].m + so[i].s; if (mm === t2) { dets.push(b); cfgOf.push(ci); } });
+  });
+  function below(bits, pos) { return popc(bits & ((1 << pos) - 1)); }
+  function lowestOf(sel) {
+    var idx = []; for (var i = 0; i < dets.length; i++) if (sel(cfgOf[i])) idx.push(i);
+    var n = idx.length; if (!n) return Infinity;
+    var diag = new Float64Array(n), rows = [], cols = [], vals = [];
+    for (var a = 0; a < n; a++) { var ci = cfgOf[idx[a]]; diag[a] = configs[ci].E + diagE(dets[idx[a]]) - refs[ci]; }
+    for (a = 0; a < n; a++) for (var b = a + 1; b < n; b++) {
+      var I = dets[idx[a]], J = dets[idx[b]], x = I ^ J, deg = popc(x), h = 0;
+      if (deg === 2) {
+        var ii = 31 - Math.clz32(I & x), aa = 31 - Math.clz32(J & x);
+        var sgn = ((below(I, ii) + below(I ^ (1 << ii), aa)) % 2) ? -1 : 1, oc = I & ~(1 << ii);
+        for (var kk = 0; kk < NS; kk++) if (oc & (1 << kk)) h += V2(aa, kk, ii, kk) - V2(aa, kk, kk, ii);
+        h *= sgn;
+      } else if (deg === 4) {
+        var rem = I & x, add = J & x;
+        var i1 = 31 - Math.clz32(rem & -rem), i2 = 31 - Math.clz32(rem & ~(rem & -rem));
+        var a1 = 31 - Math.clz32(add & -add), a2 = 31 - Math.clz32(add & ~(add & -add));
+        var bts = I, sg = 0;
+        sg += below(bts, i1); bts ^= (1 << i1); sg += below(bts, i2); bts ^= (1 << i2);
+        sg += below(bts, a2); bts ^= (1 << a2); sg += below(bts, a1);
+        h = ((sg % 2) ? -1 : 1) * (V2(a1, a2, i1, i2) - V2(a1, a2, i2, i1));
+      } else continue;
+      if (Math.abs(h) > 1e-14) { rows.push(a); cols.push(b); vals.push(h); }
+    }
+    return lowestEig(n, rows, cols, vals, diag);
+  }
+  return { A: lowestOf(function (c) { return c === 0; }), B: lowestOf(function (c) { return c === 1; }), AB: lowestOf(function () { return true; }) };
+}
+function pairStatic(g, entry, full) {
+  if (!entry.V || !entry.orbs) return full ? {} : 0;
+  var map = entry.map, ns = 0, k;
+  for (k in map) { var pq = k.split(','); if (pq[1] === '0' && map[pq[0] + ',0,0'] === 1 && map[pq[0] + ',0,1'] === 1) ns = Math.max(ns, +pq[0]); }
+  if (ns < 2) return full ? {} : 0;
+  for (k in map) { var q = k.split(','); if (q[1] === '0' && +q[0] > ns && map[k] > 0) return full ? {} : 0; }
+  var up = map[ns + ',1,0'] || 0, dn = map[ns + ',1,1'] || 0;
+  if (up + 1 > 3 || dn + 1 > 3) return full ? {} : 0;
+  var m2 = Object.assign({}, map); delete m2[ns + ',0,0']; delete m2[ns + ',0,1']; m2[ns + ',1,0'] = up + 1; m2[ns + ',1,1'] = dn + 1;
+  var keep = POOL; POOL = null;
+  var r2 = scf(g, occsFromMap(m2), entry.V, { eg: energiesOf(entry) });
+  POOL = keep;
+  if (!r2.ok) return full ? {} : 0;
+  var sOrb = null, pOrb = null;
+  entry.orbs.forEach(function (o) { if (o.n === ns && o.l === 0 && o.s === 0) sOrb = o; if (o.n === ns && o.l === 1 && (!pOrb || o.occ > pOrb.occ)) pOrb = o; });
+  if (!pOrb) r2.orbs.forEach(function (o) { if (o.n === ns && o.l === 1 && o.s === 0) pOrb = o; });
+  if (!sOrb || !pOrb || !sOrb.p || !pOrb.p) return full ? {} : 0;
+  var P = [sOrb.p, pOrb.p], cache = {};
+  function Rk(a, b, c, d, kk) { var key = a + ',' + b + ',' + c + ',' + d + ',' + kk; if (cache[key] === undefined) cache[key] = slaterR(g, P[a], P[b], P[c], P[d], kk); return cache[key]; }
+  var res = ciTwoConfig([{ l: 0 }, { l: 1 }], [
+    { N: [2, up + dn], up: [1, up], dn: [1, dn], E: entry.E },
+    { N: [0, up + dn + 2], up: [0, up + 1], dn: [0, dn + 1], E: r2.E }], Rk);
+  // se la configurazione eccitata scende sotto quella di partenza non si tratta di correlazione: si salta
+  if (!(res.B > res.A + 0.05)) return full ? { skip: true } : 0;
+  var end = res.AB - res.A;
+  if (full) return { end: end, A: res.A, B: res.B, AB: res.AB, k: up + dn };
+  return CFG.hyb ? 0.25 * end : 0;
+}
+
 // Tra le disposizioni raccolte sceglie quella con il livello piu' basso (energia media + correzione)
 function pickLowestLevel(g, pool, fallback) {
   var best = null;
   var E0 = pool.length ? pool[0].E : fallback.E;
   // per ogni configurazione si usa la disposizione degli spin che il calcolo sferico trova piu' bassa
   // (di solito quella con piu' elettroni paralleli): e' il riferimento in cui l'approssimazione e' affidabile
-  var seen = {};
+  var seen = {}, levelsSeen = [];
   pool.forEach(function (en) {
     if (en.E > E0 + 0.08) return;
     var ck = configString(en.map, true);
     if (seen[ck]) return; seen[ck] = 1;
     var c = multipletCorrection(g, en);
     var h = hybridCorrection(g, en);
-    var lev = en.E + c.dE + h;
-    if (!best || lev < best.level) best = { level: lev, entry: en, corr: c, hyb: h };
+    var ps = CFG.pair ? pairStatic(g, en) : 0;
+    var lev = en.E + c.dE + h + ps;
+    levelsSeen.push({ cfg: configString(en.map, true), level: lev });
+    if (!best || lev < best.level) best = { level: lev, entry: en, corr: c, hyb: h, pair: ps };
   });
+  // margine: distanza (in energia) dalla seconda configurazione piu' bassa
+  if (best) { var others = levelsSeen.filter(function (x) { return shellTotalsKey(x.cfg) !== shellTotalsKey(configString(best.entry.map, true)); }); best.margin = others.length ? Math.min.apply(null, others.map(function (x) { return x.level; })) - best.level : null; }
   return best;
 }
 
@@ -925,6 +1035,7 @@ function computeAtom(Z, opts) {
   var useLevels = opts.levels !== false;
   CFG.lv = opts.levels === 'so' ? 'so' : 'full';
   CFG.hyb = opts.hybrid !== undefined ? !!opts.hybrid : true;
+  CFG.pair = opts.pair !== undefined ? !!opts.pair : true;
   POOL = useLevels ? [] : null;
   var au = aufbauSCF(g, Z, maxn);
   var neu = { ok: false }, nstart = 0;
@@ -983,6 +1094,7 @@ function computeAtom(Z, opts) {
     map: cmap, config: configString(cmap), configPlain: configString(cmap, true),
     catConfig: configString(lvC.entry.map), unpaired: Math.abs(Nu - Nd),
     corrN: lvN.corr.dE * HA2EV, corrC: lvC.corr.dE * HA2EV,
+    margin: lvN.margin !== undefined && lvN.margin !== null ? lvN.margin * HA2EV : null,
     zetas: (lvN.corr.zetas || []).map(function (z) { return [z[0], z[1] * HA2EV]; }),
     orbs: orbs, dens: dens, tries: tries, ms: Date.now() - t0
   };
