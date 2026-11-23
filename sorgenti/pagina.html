@@ -148,15 +148,16 @@ footer{margin-top:2rem;color:var(--faint);font-size:.82rem;display:flex;justify-
     <li><b>Dato in ingresso:</b> il numero di protoni Z, nient'altro. Nome e simbolo dell'elemento sono solo etichette per te.</li>
     <li><b>Leggi impostate:</b> equazione di Schrödinger per gli elettroni (nella forma di Kohn-Sham), attrazione di Coulomb tra nucleo ed elettroni, repulsione tra elettroni, principio di Pauli (al massimo 2l+1 elettroni per sottolivello e per spin).</li>
     <li><b>Scambio e correlazione:</b> approssimazione PBE, che tiene conto di come la densità degli elettroni cambia da punto a punto. È costruita solo da vincoli fisici esatti; la sua base (LSDA) viene da simulazioni quantistiche del gas di elettroni, non da misure su atomi.</li>
+    <li><b>Livelli singoli:</b> il calcolo sferico dà l'energia media di una configurazione, mentre la misura registra il livello più basso. Dentro i gusci aperti il motore risolve quindi esattamente la repulsione tra gli elettroni e l'accoppiamento spin-orbita, usando gli orbitali che ha calcolato da sé.</li>
     <li><b>Relatività:</b> vicino a nuclei con molti protoni gli elettroni vanno così veloci che la loro massa cresce. Il motore usa l'equazione scalare-relativistica, con un'unica costante in più: la velocità della luce.</li>
     <li><b>Come cerca:</b> lascia che gli elettroni occupino i livelli più bassi, poi prova a spostarne uno alla volta e tiene la disposizione con l'energia più bassa. L'energia di ionizzazione è la differenza di energia tra lo ione e l'atomo neutro.</li>
-    <li><b>Cosa non sa:</b> nessuna tabella di configurazioni, nessuna regola di riempimento, nessun valore misurato. Non conosce ancora l'accoppiamento spin-orbita né le interazioni tra elettroni oltre la media sferica.</li>
+    <li><b>Cosa non sa:</b> nessuna tabella di configurazioni, nessuna regola di riempimento, nessun valore misurato. Usa ancora un'approssimazione in cui ogni elettrone interagisce un po' con se stesso.</li>
   </ul>
 </details>
 </section>
 
 <footer>
-  <span>Motore 0.2: relatività scalare, scambio-correlazione PBE, griglia logaritmica.</span>
+  <span>Motore 0.3: relatività scalare, PBE, multipletti e spin-orbita, griglia logaritmica.</span>
   <button class="linkish" id="reset">Azzera i calcoli</button>
 </footer>
 <div id="resetConfirm" class="confirm" hidden>
@@ -176,9 +177,10 @@ footer{margin-top:2rem;color:var(--faint);font-size:.82rem;display:flex;justify-
 "use strict";
 var SYM="H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga Ge As Se Br Kr Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs Ba La Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa U Np Pu Am Cm Bk Cf Es Fm Md No Lr Rf Db Sg Bh Hs Mt Ds Rg Cn Nh Fl Mc Lv Ts Og".split(" ");
 var NOMI="idrogeno elio litio berillio boro carbonio azoto ossigeno fluoro neon sodio magnesio alluminio silicio fosforo zolfo cloro argon potassio calcio scandio titanio vanadio cromo manganese ferro cobalto nichel rame zinco gallio germanio arsenico selenio bromo kripton rubidio stronzio ittrio zirconio niobio molibdeno tecnezio rutenio rodio palladio argento cadmio indio stagno antimonio tellurio iodio xeno cesio bario lantanio cerio praseodimio neodimio promezio samario europio gadolinio terbio disprosio olmio erbio tulio itterbio lutezio afnio tantalio tungsteno renio osmio iridio platino oro mercurio tallio piombo bismuto polonio astato radon francio radio attinio torio protoattinio uranio nettunio plutonio americio curio berkelio californio einsteinio fermio mendelevio nobelio laurenzio rutherfordio dubnio seaborgio bohrio hassio meitnerio darmstadtio roentgenio copernicio nihonio flerovio moscovio livermorio tennesso oganesson".split(" ");
-var ZMAX=103, KEY="lab-vergine-l0-v2", KEYB="lab-vergine-l0-busta";
-// risultati del motore 0.1 (senza relativita', LSDA), per confronto
-var PREV={all:[69,103,0.58],zone:[[32,36,0.27],[15,18,0.28],[19,32,0.61],[3,17,1.52]]};
+var ZMAX=103, KEY="lab-vergine-l0-v3", KEYB="lab-vergine-l0-busta";
+// risultati delle versioni precedenti del motore, per confronto
+var V01={all:[69,103,0.58]};
+var PREV={all:[87,103,0.21],zone:[[32,36,0.19],[15,18,0.24],[27,32,0.23],[13,17,0.17]]};
 var LET=["s","p","d","f"];
 var SUPD={"0":"⁰","1":"¹","2":"²","3":"³","4":"⁴","5":"⁵","6":"⁶","7":"⁷","8":"⁸","9":"⁹"};
 function sup(n){return String(n).split("").map(function(c){return SUPD[c];}).join("");}
@@ -265,7 +267,7 @@ function makeWorker(){
   }catch(e){worker=null;useMain=true;}
 }
 function compact(r){
-  return {Z:r.Z,ok:r.ok,E:r.E,Ecat:r.Ecat,IE:r.IE,map:r.map,unpaired:r.unpaired,tries:r.tries,ms:r.ms,
+  return {Z:r.Z,ok:r.ok,E:r.E,Ecat:r.Ecat,IE:r.IE,map:r.map,unpaired:r.unpaired,tries:r.tries,ms:r.ms,corrN:r.corrN||0,corrC:r.corrC||0,
     orbs:(r.orbs||[]).map(function(o){return [o.n,o.l,o.s,o.occ,+o.e.toFixed(6),+o.r.toFixed(4)];}),
     dens:(r.dens||[]).filter(function(_,i){return i%2===0;})};
 }
@@ -348,7 +350,8 @@ function renderDetail(){
      '<div class="fact"><b>'+fmt(r.IE,2)+' eV</b><span>energia per strappare un elettrone</span></div>'+
      '<div class="fact"><b>'+r.unpaired+'</b><span>elettroni spaiati</span></div>'+
      '<div class="fact"><b>'+r.tries+'</b><span>disposizioni provate</span></div>'+
-     '<div class="fact"><b>'+fmt(r.ms/1000,1)+' s</b><span>tempo di calcolo</span></div></div>';
+     '<div class="fact"><b>'+fmt(r.ms/1000,1)+' s</b><span>tempo di calcolo</span></div></div>'+
+     ((Math.abs(r.corrN||0)>0.005||Math.abs(r.corrC||0)>0.005)?'<p class="muted small">Livello più basso rispetto alla media della configurazione (multipletti e spin-orbita): '+fmt(r.corrN||0,2)+' eV per l\'atomo, '+fmt(r.corrC||0,2)+' eV per lo ione.</p>':'');
   if(bustaOpen&&MEAS[Z]){
     var m=MEAS[Z],same=sameTotals(t,m.cfg),d=r.IE-m.ie;
     h+='<div class="compare'+(same?"":" bad")+'"><div class="verdict">'+(same?"Stessa configurazione misurata":"Configurazione diversa da quella misurata")+'</div>'+
@@ -442,7 +445,7 @@ function renderBusta(){
   if(!all.n){el.innerHTML=h+'<p class="muted">Calcola qualche elemento per vedere il confronto.</p>';return;}
   h+='<div class="score"><div class="fact"><b>'+all.ok+' su '+all.n+'</b><span>configurazioni uguali a quelle misurate</span></div>'+
      '<div class="fact"><b>'+fmt(all.mae,2)+' eV</b><span>errore medio sull\'energia di ionizzazione</span></div></div>'+
-     '<p class="muted small">Il motore 0.1, senza relatività e con LSDA, ne indovinava '+PREV.all[0]+' su '+PREV.all[1]+', con un errore medio di '+fmt(PREV.all[2],2)+' eV.</p>';
+     '<p class="muted small">Versioni precedenti: il motore 0.1 (senza relatività, LSDA) ne indovinava '+V01.all[0]+' su '+V01.all[1]+' con un errore medio di '+fmt(V01.all[2],2)+' eV; il motore 0.2 (relatività e PBE) '+PREV.all[0]+' su '+PREV.all[1]+' con '+fmt(PREV.all[2],2)+' eV.</p>';
   var rows=[["Periodi 1–4",1,36],["Periodo 5",37,54],["Periodo 6",55,86],["Periodo 7",87,103]];
   h+='<table class="periods"><thead><tr><th>Zona</th><th>Config. uguali</th><th>Errore medio</th></tr></thead><tbody>'+rows.map(function(r,k){
     var s=stats(r[1],r[2]),p=PREV.zone[k];
@@ -450,9 +453,9 @@ function renderBusta(){
   if(count()<ZMAX){el.innerHTML=h+'<p class="muted small">Il commento sui risultati compare quando la tavola è tutta calcolata.</p>';return;}
   h+='<h3>Cosa ci dice il confronto</h3>'+
      '<p>Senza saperne nulla, il motore ritrova i gusci, la periodicità della tavola e molte anomalie vere: cromo e rame con un solo elettrone nel livello 4s, palladio senza elettroni 5s, platino e oro con un solo elettrone 6s.</p>'+
-     '<p>La relatività ha cambiato soprattutto gli elementi pesanti: nel periodo 7 le configurazioni giuste sono passate da 3 a 13 su 17, e l\'errore sull\'energia di ionizzazione da 1,52 a 0,17 eV.</p>'+
-     '<p>Gli errori che restano hanno cause note. Nei metalli di transizione (titanio, vanadio, cobalto, nichel e altri) il motore sposta ancora un elettrone dal livello s al livello d: è un difetto tipico di queste approssimazioni, che fanno interagire un po\' ogni elettrone con se stesso. Gli errori più grandi sull\'energia di ionizzazione sono negli elementi 6p, come bismuto, radon e tallio: lì conta l\'accoppiamento spin-orbita, che il motore non ha ancora. Per lo stesso motivo il laurenzio non mette il suo ultimo elettrone nel livello 7p.</p>'+
-     '<p class="muted small">Il prossimo passo è aggiungere l\'accoppiamento spin-orbita.</p>';
+     '<p>La relatività ha cambiato soprattutto gli elementi pesanti: nel periodo 7 le configurazioni giuste sono passate da 3 a 14 su 17, e l\'errore sull\'energia di ionizzazione da 1,52 a 0,10 eV. Spin-orbita e multipletti hanno sistemato gli elementi 6p: per bismuto, radon e tallio l\'errore è sceso da circa 1 eV a 0,2–0,3 eV.</p>'+
+     '<p>Gli errori che restano sono quasi tutti nei metalli di transizione (titanio, vanadio, ferro, cobalto, nichel e altri): il motore sposta ancora un elettrone dal livello s al livello d. È un difetto tipico di queste approssimazioni, che fanno interagire un po\' ogni elettrone con se stesso. Nel laurenzio i livelli 6d e 7p sono quasi alla pari e il motore sceglie il 6d; per decidere servirebbe l\'equazione di Dirac completa.</p>'+
+     '<p class="muted small">Il prossimo passo è correggere l\'interazione di ogni elettrone con se stesso.</p>';
   el.innerHTML=h;
 }
 function legend(){

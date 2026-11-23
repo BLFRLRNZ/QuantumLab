@@ -148,15 +148,16 @@ footer{margin-top:2rem;color:var(--faint);font-size:.82rem;display:flex;justify-
     <li><b>Dato in ingresso:</b> il numero di protoni Z, nient'altro. Nome e simbolo dell'elemento sono solo etichette per te.</li>
     <li><b>Leggi impostate:</b> equazione di Schrödinger per gli elettroni (nella forma di Kohn-Sham), attrazione di Coulomb tra nucleo ed elettroni, repulsione tra elettroni, principio di Pauli (al massimo 2l+1 elettroni per sottolivello e per spin).</li>
     <li><b>Scambio e correlazione:</b> approssimazione PBE, che tiene conto di come la densità degli elettroni cambia da punto a punto. È costruita solo da vincoli fisici esatti; la sua base (LSDA) viene da simulazioni quantistiche del gas di elettroni, non da misure su atomi.</li>
+    <li><b>Livelli singoli:</b> il calcolo sferico dà l'energia media di una configurazione, mentre la misura registra il livello più basso. Dentro i gusci aperti il motore risolve quindi esattamente la repulsione tra gli elettroni e l'accoppiamento spin-orbita, usando gli orbitali che ha calcolato da sé.</li>
     <li><b>Relatività:</b> vicino a nuclei con molti protoni gli elettroni vanno così veloci che la loro massa cresce. Il motore usa l'equazione scalare-relativistica, con un'unica costante in più: la velocità della luce.</li>
     <li><b>Come cerca:</b> lascia che gli elettroni occupino i livelli più bassi, poi prova a spostarne uno alla volta e tiene la disposizione con l'energia più bassa. L'energia di ionizzazione è la differenza di energia tra lo ione e l'atomo neutro.</li>
-    <li><b>Cosa non sa:</b> nessuna tabella di configurazioni, nessuna regola di riempimento, nessun valore misurato. Non conosce ancora l'accoppiamento spin-orbita né le interazioni tra elettroni oltre la media sferica.</li>
+    <li><b>Cosa non sa:</b> nessuna tabella di configurazioni, nessuna regola di riempimento, nessun valore misurato. Usa ancora un'approssimazione in cui ogni elettrone interagisce un po' con se stesso.</li>
   </ul>
 </details>
 </section>
 
 <footer>
-  <span>Motore 0.2: relatività scalare, scambio-correlazione PBE, griglia logaritmica.</span>
+  <span>Motore 0.3: relatività scalare, PBE, multipletti e spin-orbita, griglia logaritmica.</span>
   <button class="linkish" id="reset">Azzera i calcoli</button>
 </footer>
 <div id="resetConfirm" class="confirm" hidden>
@@ -166,7 +167,7 @@ footer{margin-top:2rem;color:var(--faint);font-size:.82rem;display:flex;justify-
 </main>
 
 <script id="engine">
-// MOTORE — Livello 0, versione 0.2. Unico dato in ingresso: Z (numero di protoni).
+// MOTORE — Livello 0, versione 0.3. Unico dato in ingresso: Z (numero di protoni).
 // Leggi impostate: equazione di Schrodinger per gli elettroni (Kohn-Sham, unita' atomiche),
 // attrazione di Coulomb del nucleo, repulsione di Coulomb tra elettroni (Hartree),
 // principio di Pauli (max 2l+1 elettroni per sottolivello e spin).
@@ -174,11 +175,13 @@ footer{margin-top:2rem;color:var(--faint);font-size:.82rem;display:flex;justify-
 // LSDA (scambio esatto del gas di elettroni + correlazione PW92, tarata su simulazioni quantistiche, non su misure).
 // Relativita': equazione radiale scalare-relativistica (Koelling-Harmon): massa che cresce con la velocita'
 // e termine di Darwin, senza accoppiamento spin-orbita. Unica costante in piu': c = 137,036 in unita' atomiche.
+// Livelli singoli (0.3): nei gusci aperti repulsione tra elettroni e spin-orbita risolte esattamente
+// (interazione di configurazioni) con gli orbitali calcolati; si confronta il livello piu' basso.
 // Non contiene: tabelle di configurazioni, regola di Madelung, valori misurati.
 
 var HA2EV = 27.211386245988;
 var CLIGHT = 137.035999084;
-var CFG = { rel: true, xc: 'pbe' };
+var CFG = { rel: true, xc: 'pbe', lv: 'full' };
 // derivate del potenziale (prima e seconda rispetto a r), servono per i termini relativistici
 // Potenziale di riferimento per i termini relativistici: nucleo + repulsione media degli elettroni (Hartree).
 // Lo scambio-correlazione resta nell'equazione ma non nella massa relativistica: cosi' il rumore numerico
@@ -326,11 +329,15 @@ function solveRadial1(g, n, l, V, eGuess, Zn) {
           Q[i] = (dPx / r[i] - P[i] / r[i]) / (2 * Mi * CLIGHT);
           nn += (P[i] * P[i] + Q[i] * Q[i]) * r[i] * dx;
         }
-        var yy = new Float64Array(mesh + 1);
-        for (i = 0; i <= mesh; i++) yy[i] = Math.sqrt((P[i] * P[i] + Q[i] * Q[i]) / (nn * r[i]));
-        return { e: e, y: yy };
+        var yy = new Float64Array(mesh + 1), pp = new Float64Array(mesh + 1), np = 0;
+        for (i = 0; i <= mesh; i++) { yy[i] = Math.sqrt((P[i] * P[i] + Q[i] * Q[i]) / (nn * r[i])); np += P[i] * P[i] * r[i] * dx; }
+        np = Math.sqrt(np);
+        for (i = 0; i <= mesh; i++) pp[i] = P[i] / np;
+        return { e: e, y: yy, p: pp };
       }
-      return { e: e, y: y };
+      var p0 = new Float64Array(mesh + 1);
+      for (i = 0; i <= mesh; i++) p0[i] = y[i] * sqr[i];
+      return { e: e, y: y, p: p0 };
     }
     e = Math.max(Math.min(e + de, eup), elw);
   }
@@ -533,7 +540,7 @@ function scf(g, occs, Vstart, opts) {
       sumeps += o.occ * sol.e;
       var dens = o.s === 0 ? nu : nd, y = sol.y;
       for (var i = 0; i <= mesh; i++) dens[i] += o.occ * y[i] * y[i] / (4 * Math.PI * r[i]);
-      orbs.push({ n: o.n, l: o.l, s: o.s, occ: o.occ, e: sol.e, y: sol.y });
+      orbs.push({ n: o.n, l: o.l, s: o.s, occ: o.occ, e: sol.e, y: sol.y, p: sol.p });
     }
     if (failed) {
       // un orbitale occupato non e' legato in questo passo intermedio: si torna indietro e si procede piu' piano
@@ -578,7 +585,8 @@ function scf(g, occs, Vstart, opts) {
     for (var s = 0; s < 2; s++) for (i = 0; i <= mesh; i++) { var d = Vout[s][i] - Vin[s][i]; res += d * d * (nu[i] + nd[i] + 1e-12) * w[i]; }
     res = Math.sqrt(res);
     if (it > 1 && Math.abs(E - Eold) < 1e-9 && res < 1e-6) {
-      return { ok: true, E: E, V: Vin, orbs: orbs, it: it, nu: nu, nd: nd, Ts: Ts, Eext: Eext, EH: EH, Exc: Exc };
+      if (POOL) poolAdd(occs, E, orbs, g.VHref);
+      return { ok: true, E: E, V: Vin, orbs: orbs, it: it, nu: nu, nd: nd, Ts: Ts, Eext: Eext, EH: EH, Exc: Exc, VH: g.VHref };
     }
     Eold = E;
     // miscelazione di Anderson (memoria 1)
@@ -779,6 +787,240 @@ function configString(map, plain) {
   return keys.map(function (k) { var v = String(t[k]); return k + (plain ? v : v.split('').map(function (c) { return SUP[c]; }).join('')); }).join(' ');
 }
 
+// ---------------------------------------------------------------------------------------------
+// LIVELLI SINGOLI: MULTIPLETTI E SPIN-ORBITA (dalla versione 0.3)
+// Il calcolo a simmetria sferica da' l'energia media delle disposizioni con un dato numero di elettroni
+// con spin su e giu' in ogni guscio. La busta pero' registra il singolo livello piu' basso. Dentro i gusci
+// aperti si risolve quindi il problema esatto a molti elettroni (interazione di configurazioni) con:
+//  - la repulsione tra gli elettroni dei gussci aperti (integrali di Slater dagli orbitali del motore);
+//  - l'accoppiamento spin-orbita, con la costante zeta = < (1/(2 M^2 c^2)) (1/r) dV/dr > (stesso potenziale).
+// Correzione = livello piu' basso - media delle disposizioni con gli stessi spin del calcolo sferico.
+// Nessun parametro esterno: tutto viene dagli orbitali calcolati.
+
+// raccolta delle disposizioni calcolate (per scegliere alla fine quella col livello piu' basso)
+var POOL = null;
+function poolAdd(occs, E, orbs, VH) {
+  var map = {}; occs.forEach(function (o) { if (o.occ > 0) map[orbKey(o)] = o.occ; });
+  var key = JSON.stringify(Object.keys(map).sort().map(function (k) { return k + ':' + map[k]; }));
+  for (var i = 0; i < POOL.length; i++) if (POOL[i].key === key) { if (E < POOL[i].E) { POOL[i].E = E; POOL[i].orbs = orbs; POOL[i].VH = VH; } return; }
+  POOL.push({ key: key, map: map, E: E, orbs: orbs, VH: VH });
+  POOL.sort(function (a, b) { return a.E - b.E; });
+  if (POOL.length > 10) POOL.length = 10;
+}
+
+var LF = [0]; for (var q_ = 1; q_ < 80; q_++) LF[q_] = LF[q_ - 1] + Math.log(q_);
+function w3j(j1, j2, j3, m1, m2, m3) { // simboli 3j di Wigner (argomenti interi)
+  if (m1 + m2 + m3 !== 0) return 0;
+  if (j3 < Math.abs(j1 - j2) || j3 > j1 + j2) return 0;
+  if (Math.abs(m1) > j1 || Math.abs(m2) > j2 || Math.abs(m3) > j3) return 0;
+  var pre = 0.5 * (LF[j1 + j2 - j3] + LF[j1 - j2 + j3] + LF[-j1 + j2 + j3] - LF[j1 + j2 + j3 + 1]
+    + LF[j1 + m1] + LF[j1 - m1] + LF[j2 + m2] + LF[j2 - m2] + LF[j3 + m3] + LF[j3 - m3]);
+  var tmin = Math.max(0, j2 - j3 - m1, j1 - j3 + m2), tmax = Math.min(j1 + j2 - j3, j1 - m1, j2 + m2), sum = 0;
+  for (var t = tmin; t <= tmax; t++) {
+    var den = LF[t] + LF[j3 - j2 + t + m1] + LF[j3 - j1 + t - m2] + LF[j1 + j2 - j3 - t] + LF[j1 - t - m1] + LF[j2 - t + m2];
+    sum += ((t % 2) ? -1 : 1) * Math.exp(pre - den);
+  }
+  return (((j1 - j2 - m3) % 2 + 2) % 2 ? -1 : 1) * sum;
+}
+// coefficienti angolari di Condon-Shortley c^k(l m, l' m')
+function ckc(k, l, m, lp, mp) {
+  return ((Math.abs(m) % 2) ? -1 : 1) * Math.sqrt((2 * l + 1) * (2 * lp + 1)) * w3j(l, k, lp, 0, 0, 0) * w3j(l, k, lp, -m, m - mp, mp);
+}
+// integrale radiale di Slater R^k(ab;cd) = int int Pa(1)Pc(1) r<^k/r>^(k+1) Pb(2)Pd(2)
+function slaterR(g, Pa, Pb, Pc, Pd, k) {
+  var m = g.mesh, r = g.r, dx = g.dx, i, inner = new Float64Array(m + 1), outer = new Float64Array(m + 1), acc = 0, prev = 0;
+  for (i = 0; i <= m; i++) { var f = Pb[i] * Pd[i] * Math.pow(r[i], k) * r[i]; if (i) acc += 0.5 * (f + prev) * dx; prev = f; inner[i] = acc; }
+  acc = 0; prev = 0;
+  for (i = m; i >= 0; i--) { var f2 = Pb[i] * Pd[i] * Math.pow(r[i], -k - 1) * r[i]; if (i < m) acc += 0.5 * (f2 + prev) * dx; prev = f2; outer[i] = acc; }
+  var R = 0;
+  for (i = 0; i <= m; i++) { var Y = inner[i] / Math.pow(r[i], k + 1) + Math.pow(r[i], k) * outer[i]; R += Pa[i] * Pc[i] * Y * r[i] * dx * (i === 0 || i === m ? 0.5 : 1); }
+  return R;
+}
+// autovalore piu' basso di una matrice simmetrica sparsa (Lanczos con riortogonalizzazione completa)
+function lowestEig(n, rows, cols, vals, diag) {
+  if (n === 1) return diag[0];
+  function mul(v, out) { for (var i = 0; i < n; i++) out[i] = diag[i] * v[i]; for (var k = 0; k < rows.length; k++) { out[rows[k]] += vals[k] * v[cols[k]]; out[cols[k]] += vals[k] * v[rows[k]]; } }
+  var mmax = Math.min(n, 150), Qv = [], alpha = [], beta = [], v = new Float64Array(n), w = new Float64Array(n), i, j;
+  for (i = 0; i < n; i++) v[i] = 1 / Math.sqrt(n) * (1 + 0.37 * Math.sin(1.7 * i + 0.3));
+  var nv = 0; for (i = 0; i < n; i++) nv += v[i] * v[i]; nv = Math.sqrt(nv); for (i = 0; i < n; i++) v[i] /= nv;
+  var last = 1e30, ev = 0;
+  for (j = 0; j < mmax; j++) {
+    Qv.push(Float64Array.from(v)); mul(v, w);
+    var a = 0; for (i = 0; i < n; i++) a += w[i] * v[i]; alpha.push(a);
+    // ortogonalizzazione ripetuta due volte ("due volte bastano") contro tutti i vettori precedenti
+    for (var pass = 0; pass < 2; pass++)
+      for (var q = 0; q < Qv.length; q++) { var d = 0, Qq = Qv[q]; for (i = 0; i < n; i++) d += w[i] * Qq[i]; for (i = 0; i < n; i++) w[i] -= d * Qq[i]; }
+    var b = 0; for (i = 0; i < n; i++) b += w[i] * w[i]; b = Math.sqrt(b);
+    ev = tridiagLowest(alpha, beta);
+    var scale = 0; for (i = 0; i < alpha.length; i++) scale = Math.max(scale, Math.abs(alpha[i]));
+    if (b < 1e-9 * Math.max(1, scale) || (j > 8 && Math.abs(ev - last) < 1e-11)) break;
+    last = ev; beta.push(b); for (i = 0; i < n; i++) v[i] = w[i] / b;
+  }
+  return ev;
+}
+function tridiagLowest(a, b) { // bisezione di Sturm sul tridiagonale
+  var n = a.length, lo = 1e30, hi = -1e30, i;
+  for (i = 0; i < n; i++) { var rad = (i > 0 ? Math.abs(b[i - 1]) : 0) + (i < n - 1 && b[i] !== undefined ? Math.abs(b[i]) : 0); lo = Math.min(lo, a[i] - rad); hi = Math.max(hi, a[i] + rad); }
+  for (var it = 0; it < 200; it++) {
+    var mid = 0.5 * (lo + hi), cnt = 0, d = 1;
+    for (i = 0; i < n; i++) { d = a[i] - mid - (i > 0 ? b[i - 1] * b[i - 1] / d : 0); if (d === 0) d = 1e-300; if (d < 0) cnt++; }
+    if (cnt >= 1) hi = mid; else lo = mid;
+    if (hi - lo < 1e-13 * Math.max(1, Math.abs(mid))) break;
+  }
+  return 0.5 * (lo + hi);
+}
+function popc(x) { x = x - ((x >>> 1) & 0x55555555); x = (x & 0x33333333) + ((x >>> 2) & 0x33333333); return (((x + (x >>> 4)) & 0x0F0F0F0F) * 0x01010101) >>> 24; }
+
+// Correzione per una disposizione: { dE (Hartree), size, shells }
+// shells: [{l, P, zeta, nUp, nDn}] gusci aperti; Iext: integrali radiali (per i test si possono passare a mano)
+function multipletCore(shells, Rk) {
+  // spin-orbitali: per ogni guscio m = -l..l, spin +1/2 (indice pari) e -1/2 (dispari)
+  var so = [];
+  shells.forEach(function (sh, si) { for (var m = -sh.l; m <= sh.l; m++) { so.push({ sh: si, l: sh.l, m: m, s: 1 }); so.push({ sh: si, l: sh.l, m: m, s: -1 }); } });
+  var NS = so.length;
+  if (NS > 31) return null;
+  // tabella degli integrali a due elettroni <pq|rs>
+  var T = new Float64Array(NS * NS * NS * NS);
+  for (var p = 0; p < NS; p++) for (var q = 0; q < NS; q++) for (var r = 0; r < NS; r++) {
+    if (so[p].s !== so[r].s) continue;
+    for (var t = 0; t < NS; t++) {
+      if (so[q].s !== so[t].s || so[p].m + so[q].m !== so[r].m + so[t].m) continue;
+      var A = so[p], B = so[q], C = so[r], D = so[t], val = 0;
+      var kmin = Math.max(Math.abs(A.l - C.l), Math.abs(B.l - D.l)), kmax = Math.min(A.l + C.l, B.l + D.l);
+      for (var k = kmin; k <= kmax; k++) {
+        if ((A.l + C.l + k) % 2 || (B.l + D.l + k) % 2) continue;
+        var c1 = ckc(k, A.l, A.m, C.l, C.m); if (!c1) continue;
+        var c2 = ckc(k, D.l, D.m, B.l, B.m); if (!c2) continue;
+        val += c1 * c2 * Rk(A.sh, B.sh, C.sh, D.sh, k);
+      }
+      T[((p * NS + q) * NS + r) * NS + t] = val;
+    }
+  }
+  function V2(p, q, r, t) { return T[((p * NS + q) * NS + r) * NS + t]; }
+  // spin-orbita a un corpo nello stesso guscio
+  function hso(a, b) {
+    var A = so[a], B = so[b]; if (A.sh !== B.sh) return 0;
+    var z = shells[A.sh].zeta, l = A.l; if (!z || !l) return 0;
+    if (a === b) return z * A.m * A.s * 0.5;
+    if (A.m === B.m + 1 && A.s === -1 && B.s === 1) return z * 0.5 * Math.sqrt(l * (l + 1) - B.m * (B.m + 1));
+    if (A.m === B.m - 1 && A.s === 1 && B.s === -1) return z * 0.5 * Math.sqrt(l * (l + 1) - B.m * (B.m - 1));
+    return 0;
+  }
+  // determinanti: combinazioni per guscio
+  function combos(si) {
+    var idx = []; for (var i = 0; i < NS; i++) if (so[i].sh === si) idx.push(i);
+    var N = shells[si].nUp + shells[si].nDn, out = [];
+    (function rec(start, left, bits) { if (!left) { out.push(bits); return; } for (var i = start; i <= idx.length - left; i++) rec(i + 1, left - 1, bits | (1 << idx[i])); })(0, N, 0);
+    return out;
+  }
+  var lists = shells.map(function (_, si) { return combos(si); });
+  var total = lists.reduce(function (a, l) { return a * l.length; }, 1);
+  if (total > 400000) return null;
+  var Ntot = shells.reduce(function (a, sh) { return a + sh.nUp + sh.nDn; }, 0), target2 = Ntot % 2;
+  function m2(bits) { var mm = 0; for (var i = 0; i < NS; i++) if (bits & (1 << i)) mm += 2 * so[i].m + so[i].s; return mm; }
+  function spinsOk(bits) { for (var si = 0; si < shells.length; si++) { var u = 0, d = 0; for (var i = 0; i < NS; i++) if ((bits & (1 << i)) && so[i].sh === si) { if (so[i].s > 0) u++; else d++; } if (u !== shells[si].nUp || d !== shells[si].nDn) return false; } return true; }
+  function diagE(bits) {
+    var occ = []; for (var i = 0; i < NS; i++) if (bits & (1 << i)) occ.push(i);
+    var e = 0; for (var a = 0; a < occ.length; a++) { e += hso(occ[a], occ[a]); for (var b = a + 1; b < occ.length; b++) e += V2(occ[a], occ[b], occ[a], occ[b]) - V2(occ[a], occ[b], occ[b], occ[a]); }
+    return e;
+  }
+  var dets = [], refSum = 0, refN = 0;
+  (function prod(si, bits) {
+    if (si === lists.length) {
+      if (spinsOk(bits)) { refSum += diagE(bits); refN++; }
+      if (Math.abs(m2(bits)) === target2 && m2(bits) >= 0) dets.push(bits);
+      return;
+    }
+    var L = lists[si]; for (var i = 0; i < L.length; i++) prod(si + 1, bits | L[i]);
+  })(0, 0);
+  var n = dets.length; if (!n || !refN) return null;
+  if (n > 6000) return null;
+  var diag = new Float64Array(n), rows = [], cols = [], vals = [];
+  for (var i = 0; i < n; i++) diag[i] = diagE(dets[i]);
+  function below(bits, pos) { return popc(bits & ((1 << pos) - 1)); }
+  for (i = 0; i < n; i++) for (var j = i + 1; j < n; j++) {
+    var I = dets[i], J = dets[j], x = I ^ J, deg = popc(x);
+    if (deg !== 2 && deg !== 4) continue;
+    var rem = I & x, add = J & x, h;
+    if (deg === 2) {
+      var ii = 31 - Math.clz32(rem), aa = 31 - Math.clz32(add);
+      var sgn = ((below(I, ii) + below(I ^ (1 << ii), aa)) % 2) ? -1 : 1;
+      h = hso(aa, ii);
+      var occ = I & ~(1 << ii);
+      for (var kk = 0; kk < NS; kk++) if (occ & (1 << kk)) h += V2(aa, kk, ii, kk) - V2(aa, kk, kk, ii);
+      h *= sgn;
+    } else {
+      var i1 = 31 - Math.clz32(rem & -rem), i2 = 31 - Math.clz32(rem & ~(rem & -rem));
+      var a1 = 31 - Math.clz32(add & -add), a2 = 31 - Math.clz32(add & ~(add & -add));
+      // segno di a+_a1 a+_a2 a_i2 a_i1 |I>
+      var bts = I, sg = 0;
+      sg += below(bts, i1); bts ^= (1 << i1);
+      sg += below(bts, i2); bts ^= (1 << i2);
+      sg += below(bts, a2); bts ^= (1 << a2);
+      sg += below(bts, a1); bts ^= (1 << a1);
+      h = ((sg % 2) ? -1 : 1) * (V2(a1, a2, i1, i2) - V2(a1, a2, i2, i1));
+    }
+    if (h !== 0 && Math.abs(h) > 1e-14) { rows.push(i); cols.push(j); vals.push(h); }
+  }
+  var low = lowestEig(n, rows, cols, vals, diag);
+  return { dE: low - refSum / refN, size: n, low: low, ref: refSum / refN };
+}
+
+// Gusci aperti di una disposizione calcolata e loro correzione
+function multipletCorrection(g, entry) {
+  var tot = {}, ups = {}, dns = {}, k;
+  for (k in entry.map) { var p = k.split(','), nl = p[0] + ',' + p[1]; tot[nl] = (tot[nl] || 0) + entry.map[k]; if (p[2] === '0') ups[nl] = entry.map[k]; else dns[nl] = entry.map[k]; }
+  var shells = [];
+  for (k in tot) {
+    var q = k.split(','), n = +q[0], l = +q[1];
+    if (tot[k] > 0 && tot[k] < 2 * (2 * l + 1)) {
+      var o = null; entry.orbs.forEach(function (x) { if (x.n === n && x.l === l && (!o || x.occ > o.occ)) o = x; });
+      if (!o || !o.p) return { dE: 0, skipped: true };
+      shells.push({ n: n, l: l, nUp: ups[k] || 0, nDn: dns[k] || 0, P: o.p, e: o.e });
+    }
+  }
+  if (!shells.length) return { dE: 0, shells: 0 };
+  // costante spin-orbita: zeta = int P^2 (1/(2 M^2 c^2)) (1/r) dV/dr dr, con V = nucleo + Hartree
+  var m = g.mesh, r = g.r, dx = g.dx, Vr = new Float64Array(m + 1), i;
+  for (i = 0; i <= m; i++) Vr[i] = -g.Z / r[i] + (entry.VH ? entry.VH[i] : 0);
+  var dd = potDerivs(g, Vr), Vp = dd[0], A2 = 1 / (CLIGHT * CLIGHT);
+  shells.forEach(function (sh) {
+    if (!sh.l) { sh.zeta = 0; return; }
+    var z = 0;
+    for (i = 0; i <= m; i++) { var M = CFG.rel ? 1 + 0.5 * A2 * (sh.e - Vr[i]) : 1; z += sh.P[i] * sh.P[i] * 0.5 * A2 / (M * M) * Vp[i] / r[i] * r[i] * dx; }
+    sh.zeta = z;
+  });
+  var cache = {};
+  function Rk(a, b, c, d, kk) {
+    if (CFG.lv === 'so' && kk > 0) return 0; // variante: solo spin-orbita, senza la struttura dei multipletti
+    var key = a + ',' + b + ',' + c + ',' + d + ',' + kk;
+    if (cache[key] === undefined) cache[key] = slaterR(g, shells[a].P, shells[b].P, shells[c].P, shells[d].P, kk);
+    return cache[key];
+  }
+  var res = multipletCore(shells, Rk);
+  if (!res) return { dE: 0, skipped: true };
+  res.zetas = shells.map(function (sh) { return [sh.n + LETTERS[sh.l], sh.zeta]; });
+  return res;
+}
+
+// Tra le disposizioni raccolte sceglie quella con il livello piu' basso (energia media + correzione)
+function pickLowestLevel(g, pool, fallback) {
+  var best = null;
+  var E0 = pool.length ? pool[0].E : fallback.E;
+  // per ogni configurazione si usa la disposizione degli spin che il calcolo sferico trova piu' bassa
+  // (di solito quella con piu' elettroni paralleli): e' il riferimento in cui l'approssimazione e' affidabile
+  var seen = {};
+  pool.forEach(function (en) {
+    if (en.E > E0 + 0.08) return;
+    var ck = configString(en.map, true);
+    if (seen[ck]) return; seen[ck] = 1;
+    var c = multipletCorrection(g, en);
+    var lev = en.E + c.dE;
+    if (!best || lev < best.level) best = { level: lev, entry: en, corr: c };
+  });
+  return best;
+}
+
 // Calcolo completo di un atomo: solo Z in ingresso.
 function computeAtom(Z, opts) {
   opts = opts || {};
@@ -787,6 +1029,9 @@ function computeAtom(Z, opts) {
   var t0 = Date.now();
   var g = makeGrid(Z, opts.dx, opts.rmax);
   var maxn = Z <= 2 ? 3 : Z <= 10 ? 4 : Z <= 36 ? 5 : Z <= 54 ? 6 : 7;
+  var useLevels = opts.levels !== false;
+  CFG.lv = opts.levels === 'so' ? 'so' : 'full';
+  POOL = useLevels ? [] : null;
   var au = aufbauSCF(g, Z, maxn);
   var neu = { ok: false }, nstart = 0;
   if (au) {
@@ -803,7 +1048,8 @@ function computeAtom(Z, opts) {
     var V0 = startPotential(g);
     neu = searchConfig(g, initialFill(g, V0, Z, maxn), [V0, V0], maxn, opts.log);
   }
-  if (!neu.ok) return { Z: Z, ok: false };
+  if (!neu.ok) { POOL = null; return { Z: Z, ok: false }; }
+  var poolN = POOL; if (useLevels) POOL = [];
   // Catione: si toglie un elettrone dai livelli piu' esterni, poi si lascia riassestare.
   var homo = -1e9; neu.orbs.forEach(function (o) { if (o.e > homo) homo = o.e; });
   var cand = neu.orbs.filter(function (o) { return o.e > homo - 0.6; });
@@ -817,21 +1063,33 @@ function computeAtom(Z, opts) {
     }
     if (bestCat) { var cs = searchConfig(g, bestCat.map, bestCat.V, maxn); tries += cs.tries; if (cs.ok && cs.E <= bestCat.E) bestCat = cs; }
   }
+  var poolC = POOL; POOL = null;
   if (!bestCat) return { Z: Z, ok: false };
-  var IE = (bestCat.E - neu.E) * HA2EV;
-  var Nu = 0, Nd = 0; for (var key in neu.map) { if (key.slice(-1) === '0') Nu += neu.map[key]; else Nd += neu.map[key]; }
-  // densita' radiale per il grafico: 4 pi r^2 n(r), campionata
+  // livello piu' basso: energia della disposizione + correzione per multipletti e spin-orbita
+  var lvN = { level: neu.E, entry: { map: neu.map, orbs: neu.orbs }, corr: { dE: 0 } }, lvC = { level: bestCat.E, entry: { map: bestCat.map }, corr: { dE: 0 } };
+  if (useLevels) {
+    var pn = pickLowestLevel(g, poolN, neu); if (pn) lvN = pn;
+    if (Z > 1) { var pc = pickLowestLevel(g, poolC, bestCat); if (pc) lvC = pc; }
+  }
+  var IE = (lvC.level - lvN.level) * HA2EV;
+  var chosen = lvN.entry, cmap = chosen.map;
+  var Nu = 0, Nd = 0; for (var key in cmap) { if (key.slice(-1) === '0') Nu += cmap[key]; else Nd += cmap[key]; }
+  // densita' radiale per il grafico: 4 pi r^2 n(r), campionata, dagli orbitali della disposizione scelta
+  var ntot = new Float64Array(g.mesh + 1);
+  chosen.orbs.forEach(function (o) { for (var i3 = 0; i3 <= g.mesh; i3++) ntot[i3] += o.occ * o.y[i3] * o.y[i3] / (4 * Math.PI * g.r[i3]); });
   var dens = [];
   var step = Math.max(1, Math.floor(g.mesh / 220));
-  for (var i = 0; i <= g.mesh; i += step) { if (g.r[i] > 12) break; if (g.r[i] < 1e-3) continue; dens.push([+g.r[i].toPrecision(5), +(4 * Math.PI * g.r2[i] * (neu.nu[i] + neu.nd[i])).toPrecision(5)]); }
-  var orbs = neu.orbs.map(function (o) {
+  for (var i = 0; i <= g.mesh; i += step) { if (g.r[i] > 12) break; if (g.r[i] < 1e-3) continue; dens.push([+g.r[i].toPrecision(5), +(4 * Math.PI * g.r2[i] * ntot[i]).toPrecision(5)]); }
+  var orbs = chosen.orbs.map(function (o) {
     var rm = 0; for (var i2 = 0; i2 <= g.mesh; i2++) rm += o.y[i2] * o.y[i2] * g.r2[i2] * g.r[i2] * g.dx;
     return { n: o.n, l: o.l, s: o.s, occ: o.occ, e: o.e, r: rm };
   });
   return {
-    Z: Z, ok: true, E: neu.E, Ecat: bestCat.E, IE: IE,
-    map: neu.map, config: configString(neu.map), configPlain: configString(neu.map, true),
-    catConfig: configString(bestCat.map), unpaired: Math.abs(Nu - Nd),
+    Z: Z, ok: true, E: lvN.level, Ecat: lvC.level, IE: IE,
+    map: cmap, config: configString(cmap), configPlain: configString(cmap, true),
+    catConfig: configString(lvC.entry.map), unpaired: Math.abs(Nu - Nd),
+    corrN: lvN.corr.dE * HA2EV, corrC: lvC.corr.dE * HA2EV,
+    zetas: (lvN.corr.zetas || []).map(function (z) { return [z[0], z[1] * HA2EV]; }),
     orbs: orbs, dens: dens, tries: tries, ms: Date.now() - t0
   };
 }
@@ -879,9 +1137,10 @@ if (typeof module !== 'undefined') module.exports = { BUSTA };
 "use strict";
 var SYM="H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga Ge As Se Br Kr Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs Ba La Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa U Np Pu Am Cm Bk Cf Es Fm Md No Lr Rf Db Sg Bh Hs Mt Ds Rg Cn Nh Fl Mc Lv Ts Og".split(" ");
 var NOMI="idrogeno elio litio berillio boro carbonio azoto ossigeno fluoro neon sodio magnesio alluminio silicio fosforo zolfo cloro argon potassio calcio scandio titanio vanadio cromo manganese ferro cobalto nichel rame zinco gallio germanio arsenico selenio bromo kripton rubidio stronzio ittrio zirconio niobio molibdeno tecnezio rutenio rodio palladio argento cadmio indio stagno antimonio tellurio iodio xeno cesio bario lantanio cerio praseodimio neodimio promezio samario europio gadolinio terbio disprosio olmio erbio tulio itterbio lutezio afnio tantalio tungsteno renio osmio iridio platino oro mercurio tallio piombo bismuto polonio astato radon francio radio attinio torio protoattinio uranio nettunio plutonio americio curio berkelio californio einsteinio fermio mendelevio nobelio laurenzio rutherfordio dubnio seaborgio bohrio hassio meitnerio darmstadtio roentgenio copernicio nihonio flerovio moscovio livermorio tennesso oganesson".split(" ");
-var ZMAX=103, KEY="lab-vergine-l0-v2", KEYB="lab-vergine-l0-busta";
-// risultati del motore 0.1 (senza relativita', LSDA), per confronto
-var PREV={all:[69,103,0.58],zone:[[32,36,0.27],[15,18,0.28],[19,32,0.61],[3,17,1.52]]};
+var ZMAX=103, KEY="lab-vergine-l0-v3", KEYB="lab-vergine-l0-busta";
+// risultati delle versioni precedenti del motore, per confronto
+var V01={all:[69,103,0.58]};
+var PREV={all:[87,103,0.21],zone:[[32,36,0.19],[15,18,0.24],[27,32,0.23],[13,17,0.17]]};
 var LET=["s","p","d","f"];
 var SUPD={"0":"⁰","1":"¹","2":"²","3":"³","4":"⁴","5":"⁵","6":"⁶","7":"⁷","8":"⁸","9":"⁹"};
 function sup(n){return String(n).split("").map(function(c){return SUPD[c];}).join("");}
@@ -968,7 +1227,7 @@ function makeWorker(){
   }catch(e){worker=null;useMain=true;}
 }
 function compact(r){
-  return {Z:r.Z,ok:r.ok,E:r.E,Ecat:r.Ecat,IE:r.IE,map:r.map,unpaired:r.unpaired,tries:r.tries,ms:r.ms,
+  return {Z:r.Z,ok:r.ok,E:r.E,Ecat:r.Ecat,IE:r.IE,map:r.map,unpaired:r.unpaired,tries:r.tries,ms:r.ms,corrN:r.corrN||0,corrC:r.corrC||0,
     orbs:(r.orbs||[]).map(function(o){return [o.n,o.l,o.s,o.occ,+o.e.toFixed(6),+o.r.toFixed(4)];}),
     dens:(r.dens||[]).filter(function(_,i){return i%2===0;})};
 }
@@ -1051,7 +1310,8 @@ function renderDetail(){
      '<div class="fact"><b>'+fmt(r.IE,2)+' eV</b><span>energia per strappare un elettrone</span></div>'+
      '<div class="fact"><b>'+r.unpaired+'</b><span>elettroni spaiati</span></div>'+
      '<div class="fact"><b>'+r.tries+'</b><span>disposizioni provate</span></div>'+
-     '<div class="fact"><b>'+fmt(r.ms/1000,1)+' s</b><span>tempo di calcolo</span></div></div>';
+     '<div class="fact"><b>'+fmt(r.ms/1000,1)+' s</b><span>tempo di calcolo</span></div></div>'+
+     ((Math.abs(r.corrN||0)>0.005||Math.abs(r.corrC||0)>0.005)?'<p class="muted small">Livello più basso rispetto alla media della configurazione (multipletti e spin-orbita): '+fmt(r.corrN||0,2)+' eV per l\'atomo, '+fmt(r.corrC||0,2)+' eV per lo ione.</p>':'');
   if(bustaOpen&&MEAS[Z]){
     var m=MEAS[Z],same=sameTotals(t,m.cfg),d=r.IE-m.ie;
     h+='<div class="compare'+(same?"":" bad")+'"><div class="verdict">'+(same?"Stessa configurazione misurata":"Configurazione diversa da quella misurata")+'</div>'+
@@ -1145,7 +1405,7 @@ function renderBusta(){
   if(!all.n){el.innerHTML=h+'<p class="muted">Calcola qualche elemento per vedere il confronto.</p>';return;}
   h+='<div class="score"><div class="fact"><b>'+all.ok+' su '+all.n+'</b><span>configurazioni uguali a quelle misurate</span></div>'+
      '<div class="fact"><b>'+fmt(all.mae,2)+' eV</b><span>errore medio sull\'energia di ionizzazione</span></div></div>'+
-     '<p class="muted small">Il motore 0.1, senza relatività e con LSDA, ne indovinava '+PREV.all[0]+' su '+PREV.all[1]+', con un errore medio di '+fmt(PREV.all[2],2)+' eV.</p>';
+     '<p class="muted small">Versioni precedenti: il motore 0.1 (senza relatività, LSDA) ne indovinava '+V01.all[0]+' su '+V01.all[1]+' con un errore medio di '+fmt(V01.all[2],2)+' eV; il motore 0.2 (relatività e PBE) '+PREV.all[0]+' su '+PREV.all[1]+' con '+fmt(PREV.all[2],2)+' eV.</p>';
   var rows=[["Periodi 1–4",1,36],["Periodo 5",37,54],["Periodo 6",55,86],["Periodo 7",87,103]];
   h+='<table class="periods"><thead><tr><th>Zona</th><th>Config. uguali</th><th>Errore medio</th></tr></thead><tbody>'+rows.map(function(r,k){
     var s=stats(r[1],r[2]),p=PREV.zone[k];
@@ -1153,9 +1413,9 @@ function renderBusta(){
   if(count()<ZMAX){el.innerHTML=h+'<p class="muted small">Il commento sui risultati compare quando la tavola è tutta calcolata.</p>';return;}
   h+='<h3>Cosa ci dice il confronto</h3>'+
      '<p>Senza saperne nulla, il motore ritrova i gusci, la periodicità della tavola e molte anomalie vere: cromo e rame con un solo elettrone nel livello 4s, palladio senza elettroni 5s, platino e oro con un solo elettrone 6s.</p>'+
-     '<p>La relatività ha cambiato soprattutto gli elementi pesanti: nel periodo 7 le configurazioni giuste sono passate da 3 a 13 su 17, e l\'errore sull\'energia di ionizzazione da 1,52 a 0,17 eV.</p>'+
-     '<p>Gli errori che restano hanno cause note. Nei metalli di transizione (titanio, vanadio, cobalto, nichel e altri) il motore sposta ancora un elettrone dal livello s al livello d: è un difetto tipico di queste approssimazioni, che fanno interagire un po\' ogni elettrone con se stesso. Gli errori più grandi sull\'energia di ionizzazione sono negli elementi 6p, come bismuto, radon e tallio: lì conta l\'accoppiamento spin-orbita, che il motore non ha ancora. Per lo stesso motivo il laurenzio non mette il suo ultimo elettrone nel livello 7p.</p>'+
-     '<p class="muted small">Il prossimo passo è aggiungere l\'accoppiamento spin-orbita.</p>';
+     '<p>La relatività ha cambiato soprattutto gli elementi pesanti: nel periodo 7 le configurazioni giuste sono passate da 3 a 14 su 17, e l\'errore sull\'energia di ionizzazione da 1,52 a 0,10 eV. Spin-orbita e multipletti hanno sistemato gli elementi 6p: per bismuto, radon e tallio l\'errore è sceso da circa 1 eV a 0,2–0,3 eV.</p>'+
+     '<p>Gli errori che restano sono quasi tutti nei metalli di transizione (titanio, vanadio, ferro, cobalto, nichel e altri): il motore sposta ancora un elettrone dal livello s al livello d. È un difetto tipico di queste approssimazioni, che fanno interagire un po\' ogni elettrone con se stesso. Nel laurenzio i livelli 6d e 7p sono quasi alla pari e il motore sceglie il 6d; per decidere servirebbe l\'equazione di Dirac completa.</p>'+
+     '<p class="muted small">Il prossimo passo è correggere l\'interazione di ogni elettrone con se stesso.</p>';
   el.innerHTML=h;
 }
 function legend(){
