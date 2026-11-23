@@ -1,4 +1,4 @@
-// MOTORE — Livello 0, versione 0.3. Unico dato in ingresso: Z (numero di protoni).
+// MOTORE — Livello 0, versione 0.4. Unico dato in ingresso: Z (numero di protoni).
 // Leggi impostate: equazione di Schrodinger per gli elettroni (Kohn-Sham, unita' atomiche),
 // attrazione di Coulomb del nucleo, repulsione di Coulomb tra elettroni (Hartree),
 // principio di Pauli (max 2l+1 elettroni per sottolivello e spin).
@@ -8,11 +8,13 @@
 // e termine di Darwin, senza accoppiamento spin-orbita. Unica costante in piu': c = 137,036 in unita' atomiche.
 // Livelli singoli (0.3): nei gusci aperti repulsione tra elettroni e spin-orbita risolte esattamente
 // (interazione di configurazioni) con gli orbitali calcolati; si confronta il livello piu' basso.
+// Scambio esatto (0.4): ibrido PBE0, un quarto di scambio esatto al posto di quello PBE, valutato sugli
+// orbitali di ogni configurazione, con la media vera sulle disposizioni degli elettroni nei gusci aperti.
 // Non contiene: tabelle di configurazioni, regola di Madelung, valori misurati.
 
 var HA2EV = 27.211386245988;
 var CLIGHT = 137.035999084;
-var CFG = { rel: true, xc: 'pbe', lv: 'full' };
+var CFG = { rel: true, xc: 'pbe', lv: 'full', hyb: true };
 // derivate del potenziale (prima e seconda rispetto a r), servono per i termini relativistici
 // Potenziale di riferimento per i termini relativistici: nucleo + repulsione media degli elettroni (Hartree).
 // Lo scambio-correlazione resta nell'equazione ma non nella massa relativistica: cosi' il rumore numerico
@@ -658,13 +660,19 @@ function ckc(k, l, m, lp, mp) {
   return ((Math.abs(m) % 2) ? -1 : 1) * Math.sqrt((2 * l + 1) * (2 * lp + 1)) * w3j(l, k, lp, 0, 0, 0) * w3j(l, k, lp, -m, m - mp, mp);
 }
 // integrale radiale di Slater R^k(ab;cd) = int int Pa(1)Pc(1) r<^k/r>^(k+1) Pb(2)Pd(2)
+function rPowers(g, k) {
+  if (!g.pw) g.pw = {};
+  if (!g.pw[k]) { var m = g.mesh, a = new Float64Array(m + 1), b = new Float64Array(m + 1); for (var i = 0; i <= m; i++) { a[i] = Math.pow(g.r[i], k); b[i] = 1 / (a[i] * g.r[i]); } g.pw[k] = [a, b]; }
+  return g.pw[k];
+}
 function slaterR(g, Pa, Pb, Pc, Pd, k) {
   var m = g.mesh, r = g.r, dx = g.dx, i, inner = new Float64Array(m + 1), outer = new Float64Array(m + 1), acc = 0, prev = 0;
-  for (i = 0; i <= m; i++) { var f = Pb[i] * Pd[i] * Math.pow(r[i], k) * r[i]; if (i) acc += 0.5 * (f + prev) * dx; prev = f; inner[i] = acc; }
+  var pw = rPowers(g, k), rk = pw[0], rmk = pw[1];
+  for (i = 0; i <= m; i++) { var f = Pb[i] * Pd[i] * rk[i] * r[i]; if (i) acc += 0.5 * (f + prev) * dx; prev = f; inner[i] = acc; }
   acc = 0; prev = 0;
-  for (i = m; i >= 0; i--) { var f2 = Pb[i] * Pd[i] * Math.pow(r[i], -k - 1) * r[i]; if (i < m) acc += 0.5 * (f2 + prev) * dx; prev = f2; outer[i] = acc; }
+  for (i = m; i >= 0; i--) { var f2 = Pb[i] * Pd[i] * rmk[i] * r[i]; if (i < m) acc += 0.5 * (f2 + prev) * dx; prev = f2; outer[i] = acc; }
   var R = 0;
-  for (i = 0; i <= m; i++) { var Y = inner[i] / Math.pow(r[i], k + 1) + Math.pow(r[i], k) * outer[i]; R += Pa[i] * Pc[i] * Y * r[i] * dx * (i === 0 || i === m ? 0.5 : 1); }
+  for (i = 0; i <= m; i++) { var Y = inner[i] * rmk[i] + rk[i] * outer[i]; R += Pa[i] * Pc[i] * Y * r[i] * dx * (i === 0 || i === m ? 0.5 : 1); }
   return R;
 }
 // autovalore piu' basso di una matrice simmetrica sparsa (Lanczos con riortogonalizzazione completa)
@@ -834,6 +842,59 @@ function multipletCorrection(g, entry) {
   return res;
 }
 
+// ---------------------------------------------------------------------------------------------
+// SCAMBIO ESATTO: IBRIDO PBE0 (dalla versione 0.4)
+// Nello scambio esatto ogni elettrone non interagisce con se stesso. PBE0 sostituisce un quarto dello
+// scambio PBE con quello esatto: E = E_PBE + 1/4 (Ex_esatto - Ex_PBE). Il quarto viene da un argomento
+// di teoria delle perturbazioni (Perdew, Ernzerhof, Burke 1996), non da un adattamento ai dati.
+// Qui la correzione si valuta sugli orbitali PBE di ogni configurazione (non autoconsistente).
+var ANGX = {};
+function angX(la, lb, k) { // somma su m, m' di c^k(la m, lb m')^2
+  var key = la + ',' + lb + ',' + k;
+  if (ANGX[key] === undefined) { var sm = 0; for (var ma = -la; ma <= la; ma++) for (var mb = -lb; mb <= lb; mb++) { var c = ckc(k, la, ma, lb, mb); sm += c * c; } ANGX[key] = sm; }
+  return ANGX[key];
+}
+function exactExchange(g, orbs) {
+  var Ex = 0;
+  for (var sp = 0; sp < 2; sp++) {
+    var list = orbs.filter(function (o) { return o.s === sp && o.occ > 0; });
+    for (var a = 0; a < list.length; a++) for (var b = a; b < list.length; b++) {
+      var A = list[a], B = list[b], fa = A.occ / (2 * A.l + 1), fb = B.occ / (2 * B.l + 1), sum = 0;
+      for (var k = Math.abs(A.l - B.l); k <= A.l + B.l; k += 2) { var co = angX(A.l, B.l, k); if (co) sum += co * slaterR(g, A.p, B.p, B.p, A.p, k); }
+      Ex += -0.5 * fa * fb * sum * (a === b ? 1 : 2);
+    }
+    // gusci aperti: media vera sulle disposizioni degli elettroni (non occupazioni frazionarie).
+    // Termine 1/2 * N(N-L)/(L^2 (L-1)) * somma_{m != m'} (J_mm' - K_mm'), L = 2l+1
+    list.forEach(function (o) {
+      var L = 2 * o.l + 1, N = o.occ; if (N <= 0 || N >= L || L < 2) return;
+      var tJ = 0, tK = 0;
+      for (var k = 0; k <= 2 * o.l; k += 2) {
+        var Fk = slaterR(g, o.p, o.p, o.p, o.p, k), diag2 = 0;
+        for (var m = -o.l; m <= o.l; m++) { var c = ckc(k, o.l, m, o.l, m); diag2 += c * c; }
+        tJ += (k === 0 ? L * L - L : -diag2) * Fk;
+        tK += (angX(o.l, o.l, k) - diag2) * Fk;
+      }
+      Ex += 0.5 * N * (N - L) / (L * L * (L - 1)) * (tJ - tK);
+    });
+  }
+  return Ex;
+}
+function pbeExchange(g, orbs) {
+  var m = g.mesh, r = g.r, dx = g.dx, nu = new Float64Array(m + 1), nd = new Float64Array(m + 1), i;
+  orbs.forEach(function (o) { var d = o.s === 0 ? nu : nd; for (var j = 0; j <= m; j++) d[j] += o.occ * o.y[j] * o.y[j] / (4 * Math.PI * r[j]); });
+  var Ex = 0, A = [0, 0, 0], B = [0, 0, 0];
+  for (i = 0; i <= m; i++) {
+    var lo = i === 0 ? 0 : i - 1, hi = i === m ? m : i + 1, span = (hi - lo) * dx * r[i];
+    exPart(2 * nu[i], 2 * (nu[hi] - nu[lo]) / span, A); exPart(2 * nd[i], 2 * (nd[hi] - nd[lo]) / span, B);
+    Ex += 0.5 * (A[0] + B[0]) * g.w[i];
+  }
+  return Ex;
+}
+function hybridCorrection(g, entry) {
+  if (!CFG.hyb || !entry.orbs || !entry.orbs.length || !entry.orbs[0].p) return 0;
+  return 0.25 * (exactExchange(g, entry.orbs) - pbeExchange(g, entry.orbs));
+}
+
 // Tra le disposizioni raccolte sceglie quella con il livello piu' basso (energia media + correzione)
 function pickLowestLevel(g, pool, fallback) {
   var best = null;
@@ -846,8 +907,9 @@ function pickLowestLevel(g, pool, fallback) {
     var ck = configString(en.map, true);
     if (seen[ck]) return; seen[ck] = 1;
     var c = multipletCorrection(g, en);
-    var lev = en.E + c.dE;
-    if (!best || lev < best.level) best = { level: lev, entry: en, corr: c };
+    var h = hybridCorrection(g, en);
+    var lev = en.E + c.dE + h;
+    if (!best || lev < best.level) best = { level: lev, entry: en, corr: c, hyb: h };
   });
   return best;
 }
@@ -862,6 +924,7 @@ function computeAtom(Z, opts) {
   var maxn = Z <= 2 ? 3 : Z <= 10 ? 4 : Z <= 36 ? 5 : Z <= 54 ? 6 : 7;
   var useLevels = opts.levels !== false;
   CFG.lv = opts.levels === 'so' ? 'so' : 'full';
+  CFG.hyb = opts.hybrid !== undefined ? !!opts.hybrid : true;
   POOL = useLevels ? [] : null;
   var au = aufbauSCF(g, Z, maxn);
   var neu = { ok: false }, nstart = 0;

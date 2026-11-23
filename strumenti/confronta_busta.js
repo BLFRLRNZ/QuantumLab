@@ -8,11 +8,12 @@ const [z1,z2]=[+process.argv[2]||1,+process.argv[3]||36];
 // opzioni: --xc lsda|pbe  --norel
 const XC=(process.argv.indexOf('--xc')>0)?process.argv[process.argv.indexOf('--xc')+1]:'pbe';
 const REL=process.argv.indexOf('--norel')<0;
+const HYB=process.argv.indexOf('--nohybrid')<0;
 const LV=process.argv.indexOf('--nolevels')>0?false:(process.argv.indexOf('--soonly')>0?'so':true);
-console.log('scambio-correlazione:',XC,' relativita:',REL?'si':'no',' livelli:',LV);
+console.log('scambio-correlazione:',XC,' relativita:',REL?'si':'no',' livelli:',LV,' scambio esatto:',HYB);
 let ok=0,tot=0,err=[],T=0;
 for (let Z=z1; Z<=z2; Z++){
-  const r=E.computeAtom(Z,{xc:XC,rel:REL,levels:LV}); T+=r.ms;
+  const r=E.computeAtom(Z,{xc:XC,rel:REL,levels:LV,hybrid:HYB}); T+=r.ms;
   const b=BUSTA[Z-1];
   if(!r.ok){console.log(Z,'FAIL');continue;}
   const match=same(E.shellTotals(r.map),expand(b[2]));

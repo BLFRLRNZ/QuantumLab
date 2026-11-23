@@ -148,16 +148,17 @@ footer{margin-top:2rem;color:var(--faint);font-size:.82rem;display:flex;justify-
     <li><b>Dato in ingresso:</b> il numero di protoni Z, nient'altro. Nome e simbolo dell'elemento sono solo etichette per te.</li>
     <li><b>Leggi impostate:</b> equazione di Schrödinger per gli elettroni (nella forma di Kohn-Sham), attrazione di Coulomb tra nucleo ed elettroni, repulsione tra elettroni, principio di Pauli (al massimo 2l+1 elettroni per sottolivello e per spin).</li>
     <li><b>Scambio e correlazione:</b> approssimazione PBE, che tiene conto di come la densità degli elettroni cambia da punto a punto. È costruita solo da vincoli fisici esatti; la sua base (LSDA) viene da simulazioni quantistiche del gas di elettroni, non da misure su atomi.</li>
+    <li><b>Scambio esatto:</b> un quarto dello scambio PBE è sostituito da quello esatto (ibrido PBE0), in cui nessun elettrone interagisce con se stesso. Il quarto viene da un argomento teorico, non da un adattamento ai dati.</li>
     <li><b>Livelli singoli:</b> il calcolo sferico dà l'energia media di una configurazione, mentre la misura registra il livello più basso. Dentro i gusci aperti il motore risolve quindi esattamente la repulsione tra gli elettroni e l'accoppiamento spin-orbita, usando gli orbitali che ha calcolato da sé.</li>
     <li><b>Relatività:</b> vicino a nuclei con molti protoni gli elettroni vanno così veloci che la loro massa cresce. Il motore usa l'equazione scalare-relativistica, con un'unica costante in più: la velocità della luce.</li>
     <li><b>Come cerca:</b> lascia che gli elettroni occupino i livelli più bassi, poi prova a spostarne uno alla volta e tiene la disposizione con l'energia più bassa. L'energia di ionizzazione è la differenza di energia tra lo ione e l'atomo neutro.</li>
-    <li><b>Cosa non sa:</b> nessuna tabella di configurazioni, nessuna regola di riempimento, nessun valore misurato. Usa ancora un'approssimazione in cui ogni elettrone interagisce un po' con se stesso.</li>
+    <li><b>Cosa non sa:</b> nessuna tabella di configurazioni, nessuna regola di riempimento, nessun valore misurato. Lo scambio esatto è calcolato sugli orbitali PBE, non ancora in modo autoconsistente.</li>
   </ul>
 </details>
 </section>
 
 <footer>
-  <span>Motore 0.3: relatività scalare, PBE, multipletti e spin-orbita, griglia logaritmica.</span>
+  <span>Motore 0.4: relatività scalare, PBE0, multipletti e spin-orbita, griglia logaritmica.</span>
   <button class="linkish" id="reset">Azzera i calcoli</button>
 </footer>
 <div id="resetConfirm" class="confirm" hidden>
@@ -167,7 +168,7 @@ footer{margin-top:2rem;color:var(--faint);font-size:.82rem;display:flex;justify-
 </main>
 
 <script id="engine">
-// MOTORE — Livello 0, versione 0.3. Unico dato in ingresso: Z (numero di protoni).
+// MOTORE — Livello 0, versione 0.4. Unico dato in ingresso: Z (numero di protoni).
 // Leggi impostate: equazione di Schrodinger per gli elettroni (Kohn-Sham, unita' atomiche),
 // attrazione di Coulomb del nucleo, repulsione di Coulomb tra elettroni (Hartree),
 // principio di Pauli (max 2l+1 elettroni per sottolivello e spin).
@@ -177,11 +178,13 @@ footer{margin-top:2rem;color:var(--faint);font-size:.82rem;display:flex;justify-
 // e termine di Darwin, senza accoppiamento spin-orbita. Unica costante in piu': c = 137,036 in unita' atomiche.
 // Livelli singoli (0.3): nei gusci aperti repulsione tra elettroni e spin-orbita risolte esattamente
 // (interazione di configurazioni) con gli orbitali calcolati; si confronta il livello piu' basso.
+// Scambio esatto (0.4): ibrido PBE0, un quarto di scambio esatto al posto di quello PBE, valutato sugli
+// orbitali di ogni configurazione, con la media vera sulle disposizioni degli elettroni nei gusci aperti.
 // Non contiene: tabelle di configurazioni, regola di Madelung, valori misurati.
 
 var HA2EV = 27.211386245988;
 var CLIGHT = 137.035999084;
-var CFG = { rel: true, xc: 'pbe', lv: 'full' };
+var CFG = { rel: true, xc: 'pbe', lv: 'full', hyb: true };
 // derivate del potenziale (prima e seconda rispetto a r), servono per i termini relativistici
 // Potenziale di riferimento per i termini relativistici: nucleo + repulsione media degli elettroni (Hartree).
 // Lo scambio-correlazione resta nell'equazione ma non nella massa relativistica: cosi' il rumore numerico
@@ -827,13 +830,19 @@ function ckc(k, l, m, lp, mp) {
   return ((Math.abs(m) % 2) ? -1 : 1) * Math.sqrt((2 * l + 1) * (2 * lp + 1)) * w3j(l, k, lp, 0, 0, 0) * w3j(l, k, lp, -m, m - mp, mp);
 }
 // integrale radiale di Slater R^k(ab;cd) = int int Pa(1)Pc(1) r<^k/r>^(k+1) Pb(2)Pd(2)
+function rPowers(g, k) {
+  if (!g.pw) g.pw = {};
+  if (!g.pw[k]) { var m = g.mesh, a = new Float64Array(m + 1), b = new Float64Array(m + 1); for (var i = 0; i <= m; i++) { a[i] = Math.pow(g.r[i], k); b[i] = 1 / (a[i] * g.r[i]); } g.pw[k] = [a, b]; }
+  return g.pw[k];
+}
 function slaterR(g, Pa, Pb, Pc, Pd, k) {
   var m = g.mesh, r = g.r, dx = g.dx, i, inner = new Float64Array(m + 1), outer = new Float64Array(m + 1), acc = 0, prev = 0;
-  for (i = 0; i <= m; i++) { var f = Pb[i] * Pd[i] * Math.pow(r[i], k) * r[i]; if (i) acc += 0.5 * (f + prev) * dx; prev = f; inner[i] = acc; }
+  var pw = rPowers(g, k), rk = pw[0], rmk = pw[1];
+  for (i = 0; i <= m; i++) { var f = Pb[i] * Pd[i] * rk[i] * r[i]; if (i) acc += 0.5 * (f + prev) * dx; prev = f; inner[i] = acc; }
   acc = 0; prev = 0;
-  for (i = m; i >= 0; i--) { var f2 = Pb[i] * Pd[i] * Math.pow(r[i], -k - 1) * r[i]; if (i < m) acc += 0.5 * (f2 + prev) * dx; prev = f2; outer[i] = acc; }
+  for (i = m; i >= 0; i--) { var f2 = Pb[i] * Pd[i] * rmk[i] * r[i]; if (i < m) acc += 0.5 * (f2 + prev) * dx; prev = f2; outer[i] = acc; }
   var R = 0;
-  for (i = 0; i <= m; i++) { var Y = inner[i] / Math.pow(r[i], k + 1) + Math.pow(r[i], k) * outer[i]; R += Pa[i] * Pc[i] * Y * r[i] * dx * (i === 0 || i === m ? 0.5 : 1); }
+  for (i = 0; i <= m; i++) { var Y = inner[i] * rmk[i] + rk[i] * outer[i]; R += Pa[i] * Pc[i] * Y * r[i] * dx * (i === 0 || i === m ? 0.5 : 1); }
   return R;
 }
 // autovalore piu' basso di una matrice simmetrica sparsa (Lanczos con riortogonalizzazione completa)
@@ -1003,6 +1012,59 @@ function multipletCorrection(g, entry) {
   return res;
 }
 
+// ---------------------------------------------------------------------------------------------
+// SCAMBIO ESATTO: IBRIDO PBE0 (dalla versione 0.4)
+// Nello scambio esatto ogni elettrone non interagisce con se stesso. PBE0 sostituisce un quarto dello
+// scambio PBE con quello esatto: E = E_PBE + 1/4 (Ex_esatto - Ex_PBE). Il quarto viene da un argomento
+// di teoria delle perturbazioni (Perdew, Ernzerhof, Burke 1996), non da un adattamento ai dati.
+// Qui la correzione si valuta sugli orbitali PBE di ogni configurazione (non autoconsistente).
+var ANGX = {};
+function angX(la, lb, k) { // somma su m, m' di c^k(la m, lb m')^2
+  var key = la + ',' + lb + ',' + k;
+  if (ANGX[key] === undefined) { var sm = 0; for (var ma = -la; ma <= la; ma++) for (var mb = -lb; mb <= lb; mb++) { var c = ckc(k, la, ma, lb, mb); sm += c * c; } ANGX[key] = sm; }
+  return ANGX[key];
+}
+function exactExchange(g, orbs) {
+  var Ex = 0;
+  for (var sp = 0; sp < 2; sp++) {
+    var list = orbs.filter(function (o) { return o.s === sp && o.occ > 0; });
+    for (var a = 0; a < list.length; a++) for (var b = a; b < list.length; b++) {
+      var A = list[a], B = list[b], fa = A.occ / (2 * A.l + 1), fb = B.occ / (2 * B.l + 1), sum = 0;
+      for (var k = Math.abs(A.l - B.l); k <= A.l + B.l; k += 2) { var co = angX(A.l, B.l, k); if (co) sum += co * slaterR(g, A.p, B.p, B.p, A.p, k); }
+      Ex += -0.5 * fa * fb * sum * (a === b ? 1 : 2);
+    }
+    // gusci aperti: media vera sulle disposizioni degli elettroni (non occupazioni frazionarie).
+    // Termine 1/2 * N(N-L)/(L^2 (L-1)) * somma_{m != m'} (J_mm' - K_mm'), L = 2l+1
+    list.forEach(function (o) {
+      var L = 2 * o.l + 1, N = o.occ; if (N <= 0 || N >= L || L < 2) return;
+      var tJ = 0, tK = 0;
+      for (var k = 0; k <= 2 * o.l; k += 2) {
+        var Fk = slaterR(g, o.p, o.p, o.p, o.p, k), diag2 = 0;
+        for (var m = -o.l; m <= o.l; m++) { var c = ckc(k, o.l, m, o.l, m); diag2 += c * c; }
+        tJ += (k === 0 ? L * L - L : -diag2) * Fk;
+        tK += (angX(o.l, o.l, k) - diag2) * Fk;
+      }
+      Ex += 0.5 * N * (N - L) / (L * L * (L - 1)) * (tJ - tK);
+    });
+  }
+  return Ex;
+}
+function pbeExchange(g, orbs) {
+  var m = g.mesh, r = g.r, dx = g.dx, nu = new Float64Array(m + 1), nd = new Float64Array(m + 1), i;
+  orbs.forEach(function (o) { var d = o.s === 0 ? nu : nd; for (var j = 0; j <= m; j++) d[j] += o.occ * o.y[j] * o.y[j] / (4 * Math.PI * r[j]); });
+  var Ex = 0, A = [0, 0, 0], B = [0, 0, 0];
+  for (i = 0; i <= m; i++) {
+    var lo = i === 0 ? 0 : i - 1, hi = i === m ? m : i + 1, span = (hi - lo) * dx * r[i];
+    exPart(2 * nu[i], 2 * (nu[hi] - nu[lo]) / span, A); exPart(2 * nd[i], 2 * (nd[hi] - nd[lo]) / span, B);
+    Ex += 0.5 * (A[0] + B[0]) * g.w[i];
+  }
+  return Ex;
+}
+function hybridCorrection(g, entry) {
+  if (!CFG.hyb || !entry.orbs || !entry.orbs.length || !entry.orbs[0].p) return 0;
+  return 0.25 * (exactExchange(g, entry.orbs) - pbeExchange(g, entry.orbs));
+}
+
 // Tra le disposizioni raccolte sceglie quella con il livello piu' basso (energia media + correzione)
 function pickLowestLevel(g, pool, fallback) {
   var best = null;
@@ -1015,8 +1077,9 @@ function pickLowestLevel(g, pool, fallback) {
     var ck = configString(en.map, true);
     if (seen[ck]) return; seen[ck] = 1;
     var c = multipletCorrection(g, en);
-    var lev = en.E + c.dE;
-    if (!best || lev < best.level) best = { level: lev, entry: en, corr: c };
+    var h = hybridCorrection(g, en);
+    var lev = en.E + c.dE + h;
+    if (!best || lev < best.level) best = { level: lev, entry: en, corr: c, hyb: h };
   });
   return best;
 }
@@ -1031,6 +1094,7 @@ function computeAtom(Z, opts) {
   var maxn = Z <= 2 ? 3 : Z <= 10 ? 4 : Z <= 36 ? 5 : Z <= 54 ? 6 : 7;
   var useLevels = opts.levels !== false;
   CFG.lv = opts.levels === 'so' ? 'so' : 'full';
+  CFG.hyb = opts.hybrid !== undefined ? !!opts.hybrid : true;
   POOL = useLevels ? [] : null;
   var au = aufbauSCF(g, Z, maxn);
   var neu = { ok: false }, nstart = 0;
@@ -1137,10 +1201,10 @@ if (typeof module !== 'undefined') module.exports = { BUSTA };
 "use strict";
 var SYM="H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga Ge As Se Br Kr Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs Ba La Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa U Np Pu Am Cm Bk Cf Es Fm Md No Lr Rf Db Sg Bh Hs Mt Ds Rg Cn Nh Fl Mc Lv Ts Og".split(" ");
 var NOMI="idrogeno elio litio berillio boro carbonio azoto ossigeno fluoro neon sodio magnesio alluminio silicio fosforo zolfo cloro argon potassio calcio scandio titanio vanadio cromo manganese ferro cobalto nichel rame zinco gallio germanio arsenico selenio bromo kripton rubidio stronzio ittrio zirconio niobio molibdeno tecnezio rutenio rodio palladio argento cadmio indio stagno antimonio tellurio iodio xeno cesio bario lantanio cerio praseodimio neodimio promezio samario europio gadolinio terbio disprosio olmio erbio tulio itterbio lutezio afnio tantalio tungsteno renio osmio iridio platino oro mercurio tallio piombo bismuto polonio astato radon francio radio attinio torio protoattinio uranio nettunio plutonio americio curio berkelio californio einsteinio fermio mendelevio nobelio laurenzio rutherfordio dubnio seaborgio bohrio hassio meitnerio darmstadtio roentgenio copernicio nihonio flerovio moscovio livermorio tennesso oganesson".split(" ");
-var ZMAX=103, KEY="lab-vergine-l0-v3", KEYB="lab-vergine-l0-busta";
+var ZMAX=103, KEY="lab-vergine-l0-v4", KEYB="lab-vergine-l0-busta";
 // risultati delle versioni precedenti del motore, per confronto
-var V01={all:[69,103,0.58]};
-var PREV={all:[87,103,0.21],zone:[[32,36,0.19],[15,18,0.24],[27,32,0.23],[13,17,0.17]]};
+var HIST=[["0.1",69,0.58],["0.2",87,0.21],["0.3",89,0.16]];
+var PREV={all:[89,103,0.16],zone:[[31,36,0.19],[16,18,0.19],[28,32,0.13],[14,17,0.10]]};
 var LET=["s","p","d","f"];
 var SUPD={"0":"⁰","1":"¹","2":"²","3":"³","4":"⁴","5":"⁵","6":"⁶","7":"⁷","8":"⁸","9":"⁹"};
 function sup(n){return String(n).split("").map(function(c){return SUPD[c];}).join("");}
@@ -1405,7 +1469,7 @@ function renderBusta(){
   if(!all.n){el.innerHTML=h+'<p class="muted">Calcola qualche elemento per vedere il confronto.</p>';return;}
   h+='<div class="score"><div class="fact"><b>'+all.ok+' su '+all.n+'</b><span>configurazioni uguali a quelle misurate</span></div>'+
      '<div class="fact"><b>'+fmt(all.mae,2)+' eV</b><span>errore medio sull\'energia di ionizzazione</span></div></div>'+
-     '<p class="muted small">Versioni precedenti: il motore 0.1 (senza relatività, LSDA) ne indovinava '+V01.all[0]+' su '+V01.all[1]+' con un errore medio di '+fmt(V01.all[2],2)+' eV; il motore 0.2 (relatività e PBE) '+PREV.all[0]+' su '+PREV.all[1]+' con '+fmt(PREV.all[2],2)+' eV.</p>';
+     '<p class="muted small">Versioni precedenti del motore: '+HIST.map(function(v){return v[0]+': '+v[1]+' su 103 e '+fmt(v[2],2)+' eV';}).join('; ')+'. Nella tabella, "prima" è la versione 0.3.</p>';
   var rows=[["Periodi 1–4",1,36],["Periodo 5",37,54],["Periodo 6",55,86],["Periodo 7",87,103]];
   h+='<table class="periods"><thead><tr><th>Zona</th><th>Config. uguali</th><th>Errore medio</th></tr></thead><tbody>'+rows.map(function(r,k){
     var s=stats(r[1],r[2]),p=PREV.zone[k];
@@ -1413,9 +1477,9 @@ function renderBusta(){
   if(count()<ZMAX){el.innerHTML=h+'<p class="muted small">Il commento sui risultati compare quando la tavola è tutta calcolata.</p>';return;}
   h+='<h3>Cosa ci dice il confronto</h3>'+
      '<p>Senza saperne nulla, il motore ritrova i gusci, la periodicità della tavola e molte anomalie vere: cromo e rame con un solo elettrone nel livello 4s, palladio senza elettroni 5s, platino e oro con un solo elettrone 6s.</p>'+
-     '<p>La relatività ha cambiato soprattutto gli elementi pesanti: nel periodo 7 le configurazioni giuste sono passate da 3 a 14 su 17, e l\'errore sull\'energia di ionizzazione da 1,52 a 0,10 eV. Spin-orbita e multipletti hanno sistemato gli elementi 6p: per bismuto, radon e tallio l\'errore è sceso da circa 1 eV a 0,2–0,3 eV.</p>'+
-     '<p>Gli errori che restano sono quasi tutti nei metalli di transizione (titanio, vanadio, ferro, cobalto, nichel e altri): il motore sposta ancora un elettrone dal livello s al livello d. È un difetto tipico di queste approssimazioni, che fanno interagire un po\' ogni elettrone con se stesso. Nel laurenzio i livelli 6d e 7p sono quasi alla pari e il motore sceglie il 6d; per decidere servirebbe l\'equazione di Dirac completa.</p>'+
-     '<p class="muted small">Il prossimo passo è correggere l\'interazione di ogni elettrone con se stesso.</p>';
+     '<p>Ogni legge aggiunta ha tolto un tipo di errore. La relatività ha sistemato gli elementi pesanti: nel periodo 7 le configurazioni giuste sono passate da 3 a 14 su 17. Spin-orbita e multipletti hanno sistemato gli elementi 6p come bismuto, radon e tallio. Lo scambio esatto ha sistemato quasi tutti i metalli di transizione: titanio, ferro, cobalto e nichel ora hanno la configurazione giusta, e l\'errore più grande sull\'energia di ionizzazione è sceso da 0,65 a 0,44 eV.</p>'+
+     '<p>Restano sbagliati vanadio, zirconio, tecnezio e tungsteno, dove le due configurazioni in gara sono vicine in energia; lantanio, cerio, uranio e curio, dove competono livelli f e d; e il laurenzio, dove servirebbe l\'equazione di Dirac completa. Negli elementi pesanti lo scambio esatto peggiora un po\' le energie: per ora è calcolato sugli orbitali PBE, non in modo autoconsistente.</p>'+
+     '<p class="muted small">Prossimi passi possibili: rendere autoconsistente lo scambio esatto, oppure passare al Livello 1, le molecole.</p>';
   el.innerHTML=h;
 }
 function legend(){
